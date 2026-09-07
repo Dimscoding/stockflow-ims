@@ -5,7 +5,7 @@ import {
   ArrowDownToLine, ArrowUpFromLine, BarChart3, Boxes, Building2,
   ChevronDown, CircleAlert, ClipboardCheck, FileDown, LayoutDashboard,
   Menu, Mic, Moon, Package, Plus, Search, Settings, Sparkles, Sun,
-  Truck, Warehouse, X,
+  Truck, Warehouse, X, CalendarClock,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { seedItems, type Item } from "@/data/inventory";
 import InventoryAdvanced from "@/components/inventory-advanced";
+import BatchExpiryView from "@/components/batch-expiry-view";
 import {
   exportInventory, getStockHealth, ItemDetailModal, SettingsView,
   StockNeedsPanel, StocktakeView, SuppliersView, TransactionsView, UsersView,
@@ -25,7 +26,7 @@ const WarehouseCanvas = dynamic(() => import("@/components/warehouse-canvas"), {
   loading: () => <div className="canvas-loading">Menyiapkan denah gudang…</div>,
 });
 
-type NavKey = "dashboard" | "inventory" | "transactions" | "stocktake" | "warehouse" | "reports" | "suppliers" | "users" | "settings";
+type NavKey = "dashboard" | "inventory" | "transactions" | "stocktake" | "batches" | "warehouse" | "reports" | "suppliers" | "users" | "settings";
 
 const movementData = [
   { day: "Sen", incoming: 38, outgoing: 22 }, { day: "Sel", incoming: 24, outgoing: 31 },
@@ -46,6 +47,7 @@ const navItems = [
   { key: "inventory" as const, label: "Inventory", icon: Boxes },
   { key: "transactions" as const, label: "Transaksi", icon: ArrowDownToLine },
   { key: "stocktake" as const, label: "Stok opname", icon: ClipboardCheck },
+  { key: "batches" as const, label: "Batch & expiry", icon: CalendarClock },
   { key: "warehouse" as const, label: "Denah gudang", icon: Warehouse },
   { key: "reports" as const, label: "Laporan", icon: BarChart3 },
   { key: "suppliers" as const, label: "Supplier", icon: Truck },
@@ -90,7 +92,6 @@ export default function Home() {
     const frame = requestAnimationFrame(() => setItems(JSON.parse(stored) as Item[]));
     return () => cancelAnimationFrame(frame);
   }, []);
-
   useEffect(() => { localStorage.setItem("stockflow-horeca-items-v1", JSON.stringify(items)); }, [items]);
 
   useEffect(() => {
@@ -140,9 +141,9 @@ export default function Home() {
         <div className="brand"><span className="brand-mark"><Boxes size={20} /></span><div><strong>StockFlow</strong><small>Inventory OS</small></div></div>
         <button className="close-menu" onClick={() => setMenuOpen(false)} aria-label="Tutup menu"><X /></button>
         <div className="nav-label">Workspace</div>
-        <nav>{navItems.slice(0, 6).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "nav-item active" : "nav-item"} onClick={() => activate(key)}><Icon size={18} /><span>{label}</span>{key === "inventory" && <b>{items.length}</b>}</button>)}</nav>
+        <nav>{navItems.slice(0, 7).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "nav-item active" : "nav-item"} onClick={() => activate(key)}><Icon size={18} /><span>{label}</span>{key === "inventory" && <b>{items.length}</b>}</button>)}</nav>
         <div className="nav-label tools-label">Manajemen</div>
-        <nav>{navItems.slice(6).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "nav-item active" : "nav-item"} onClick={() => activate(key)}><Icon size={18}/><span>{label}</span></button>)}</nav>
+        <nav>{navItems.slice(7).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "nav-item active" : "nav-item"} onClick={() => activate(key)}><Icon size={18}/><span>{label}</span></button>)}</nav>
         <div className="ai-card"><span><Sparkles size={17} /> StockFlow AI</span><p>Cek stok dan buat transaksi dengan perintah suara.</p><button onClick={startVoice}><Mic size={15} /> Coba voice command</button></div>
         <div className="profile-side"><div className="avatar">DR</div><div><strong>Dimas Riyanto</strong><small>Administrator</small></div><ChevronDown size={16} /></div>
       </aside>
@@ -153,6 +154,7 @@ export default function Home() {
         {active === "inventory" && <InventoryAdvanced items={filteredItems} query={query} setQuery={setQuery} onAdd={() => setShowAdd(true)} onSelect={setSelectedItem} />}
         {active === "transactions" && <TransactionsView items={items} records={stockTransactions} onRecord={recordStockTransaction}/>}
         {active === "stocktake" && <StocktakeView items={items} onApply={(counts) => setItems((current) => current.map((item) => ({ ...item, stock: Number(counts[item.id] ?? item.stock) })))}/>}
+        {active === "batches" && <BatchExpiryView items={items}/>} 
         {active === "warehouse" && <WarehouseView />}{active === "reports" && <Reports items={items} />}
         {active === "suppliers" && <SuppliersView/>}{active === "users" && <UsersView/>}{active === "settings" && <SettingsView/>}
       </main>
@@ -185,4 +187,3 @@ function AddItemModal({onClose,onSave}:{onClose:()=>void;onSave:(item:Item)=>voi
   const update=(key:string,value:string)=>setForm(current=>({...current,[key]:value}));
   return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><form className="modal" onSubmit={submit} onMouseDown={(event)=>event.stopPropagation()}><div className="modal-head"><div><h2>Tambah barang</h2><p>Masukkan data master dan stok awal.</p></div><button type="button" onClick={onClose}><X/></button></div><div className="form-grid"><label className="full">Nama barang<input required value={form.name} onChange={(e)=>update("name",e.target.value)} placeholder="Contoh: Fresh Milk Pasteurisasi 1 L"/></label><label>SKU<input required value={form.sku} onChange={(e)=>update("sku",e.target.value)} placeholder="DRY-MLK-PST-1L"/></label><label>Kelompok<select value={form.group} onChange={(e)=>update("group",e.target.value)}><option>Bahan Mentah</option><option>Semi-Finished</option><option>Sirup &amp; Topping</option><option>Kemasan</option><option>Operasional</option></select></label><label>Kategori<input required value={form.category} onChange={(e)=>update("category",e.target.value)}/></label><label>Supplier<input required value={form.supplier} onChange={(e)=>update("supplier",e.target.value)} placeholder="Nama vendor"/></label><label>Lokasi<select value={form.warehouse} onChange={(e)=>update("warehouse",e.target.value)}><option>Dry Storage</option><option>Chiller</option><option>Freezer</option><option>Beverage Bar</option><option>Packaging Store</option><option>Hygiene Store</option><option>Chemical Store</option></select></label><label>Satuan<input value={form.unit} onChange={(e)=>update("unit",e.target.value)}/></label><label>Stok awal<input required type="number" min="0" value={form.stock} onChange={(e)=>update("stock",e.target.value)}/></label><label>Stok minimum<input required type="number" min="0" value={form.minimum} onChange={(e)=>update("minimum",e.target.value)}/></label><label className="full">Harga estimasi<input required type="number" min="0" value={form.price} onChange={(e)=>update("price",e.target.value)} placeholder="0"/></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Batal</button><button className="primary" type="submit">Simpan barang</button></div></form></div>
 }
-function shortMoney(value:number){if(value>=1_000_000_000)return `Rp${(value/1_000_000_000).toFixed(1)} M`;if(value>=1_000_000)return `Rp${(value/1_000_000).toFixed(1)} Jt`;return money.format(value)}
