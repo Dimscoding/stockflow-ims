@@ -200,7 +200,7 @@ function Dashboard({ totals, items, greeting, voiceText, listening, startVoice, 
 
       <article className="panel transaction-panel reference-activity">
         <PanelTitle title="Aktivitas terbaru" subtitle="Transaksi terbaru dari seluruh gudang" action="Lihat semua →" onAction={() => onNavigate("transactions")} />
-        <div className="reference-activity-list">{transactions.slice(0,5).map((trx) => <TransactionRow key={trx.id} trx={trx}/>)}</div>
+        <div className="activity-table-wrap"><table className="activity-table"><thead><tr><th>Aktivitas</th><th>Barang</th><th>Jenis / ID</th><th>Jumlah</th><th>Waktu</th></tr></thead><tbody>{transactions.slice(0,5).map((trx) => <ActivityTableRow key={trx.id} trx={trx}/>)}</tbody></table></div>
       </article>
     </section>
 
@@ -214,6 +214,7 @@ function Dashboard({ totals, items, greeting, voiceText, listening, startVoice, 
 function WarehouseView() { return <div className="page-content"><section className="page-heading"><div><h2>Denah gudang interaktif</h2><p>Petakan dry storage, chiller, freezer, beverage bar, dan area kemasan.</p></div><div className="live-pill"><span/> Tersimpan otomatis</div></section><article className="panel warehouse-card"><div className="warehouse-info"><div><strong>Central Kitchen &amp; Storage — Monjok</strong><span>8 zona · 24 rak · inventaris F&amp;B</span></div><div className="capacity"><span>Kapasitas 72%</span><div><i/></div></div></div><div className="canvas-shell"><WarehouseCanvas/></div></article></div> }
 function StatCard({title,value,note,icon,tone}:{title:string;value:string;note:string;icon:React.ReactNode;tone:string}) { return <article className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div className="stat-copy"><span>{title}</span><strong>{value}</strong><small>{note}</small></div><div className={`spark ${tone}`}><i/><i/><i/><i/><i/></div></article> }
 function PanelTitle({title,subtitle,action,onAction}:{title:string;subtitle:string;action?:string;onAction?:()=>void}) { return <div className="panel-title"><div><h3>{title}</h3><p>{subtitle}</p></div>{action&&<button onClick={onAction}>{action}</button>}</div> }
+function ActivityTableRow({trx}:{trx:(typeof transactions)[number]}) { return <tr><td><span className={`trx-icon ${trx.tone}`}>{trx.tone==="in"?<ArrowDownToLine/>:trx.tone==="out"?<ArrowUpFromLine/>:trx.tone==="transfer"?<Truck/>:<CircleAlert/>}</span></td><td><strong>{trx.item}</strong></td><td><span>{trx.type}</span><small>{trx.id}</small></td><td><b>{trx.qty}</b></td><td>{trx.time}</td></tr> }
 function TransactionRow({trx}:{trx:(typeof transactions)[number]}) { return <div className="transaction-row"><span className={`trx-icon ${trx.tone}`}>{trx.tone==="in"?<ArrowDownToLine/>:trx.tone==="out"?<ArrowUpFromLine/>:trx.tone==="transfer"?<Truck/>:<CircleAlert/>}</span><div><strong>{trx.item}</strong><small>{trx.type} · {trx.id}</small></div><div><b>{trx.qty}</b><small>{trx.time}</small></div></div> }
 function AddItemModal({onClose,onSave}:{onClose:()=>void;onSave:(item:Item)=>void}) {
   const [form,setForm]=useState({name:"",sku:"",group:"Bahan Mentah",category:"Dairy, Egg & Fats",supplier:"",warehouse:"Dry Storage",stock:"",minimum:"",price:"",unit:"Pcs"});
