@@ -17,6 +17,7 @@ import InventoryAdvanced from "@/components/inventory-advanced";
 import BatchExpiryView from "@/components/batch-expiry-view";
 import { TransactionsAdvanced, StocktakeAdvanced } from "@/components/transactions-stocktake-advanced";
 import SupplierPOView from "@/components/supplier-po-view";
+import WasteReportsView from "@/components/waste-reports-view";
 import {
   exportInventory, getStockHealth, ItemDetailModal, SettingsView,
   StockNeedsPanel, UsersView,
@@ -51,7 +52,7 @@ const navItems = [
   { key: "stocktake" as const, label: "Stok opname", icon: ClipboardCheck },
   { key: "batches" as const, label: "Batch & expiry", icon: CalendarClock },
   { key: "warehouse" as const, label: "Denah gudang", icon: Warehouse },
-  { key: "reports" as const, label: "Laporan", icon: BarChart3 },
+  { key: "reports" as const, label: "Waste & laporan", icon: BarChart3 },
   { key: "suppliers" as const, label: "Supplier & PO", icon: Truck },
   { key: "users" as const, label: "Pengguna", icon: Building2 },
   { key: "settings" as const, label: "Pengaturan", icon: Settings },
@@ -142,7 +143,7 @@ export default function Home() {
       {active === "transactions" && <TransactionsAdvanced items={items} records={stockTransactions} onRecord={recordStockTransaction} onUpdateRecords={setStockTransactions}/>} 
       {active === "stocktake" && <StocktakeAdvanced items={items} onApply={(counts) => setItems((current) => current.map((item) => ({ ...item, stock: Number(counts[item.id] ?? item.stock) })))}/>} 
       {active === "batches" && <BatchExpiryView items={items}/>} 
-      {active === "warehouse" && <WarehouseView />}{active === "reports" && <Reports items={items} />}
+      {active === "warehouse" && <WarehouseView />}{active === "reports" && <WasteReportsView items={items} />}
       {active === "suppliers" && <SupplierPOView items={items}/>} {active === "users" && <UsersView/>}{active === "settings" && <SettingsView/>}
     </main>
     <nav className="mobile-nav">{navItems.slice(0, 4).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "active" : ""} onClick={() => activate(key)}><Icon size={19} /><span>{label.split(" ")[0]}</span></button>)}</nav>
@@ -160,10 +161,7 @@ function Dashboard({ totals, items, greeting, voiceText, listening, startVoice, 
       <article className="panel attention-panel"><PanelTitle title="Stok perlu perhatian" subtitle="Di bawah batas minimum" action="Kelola stok" onAction={() => onNavigate("inventory")} />{items.filter((item) => item.stock <= item.minimum).slice(0,3).map((item) => <div className="stock-alert" key={item.id}><div className="product-icon"><Package size={18}/></div><div><strong>{item.name}</strong><small>{item.sku} · {item.warehouse}</small></div><div className={item.stock === 0 ? "stock-badge empty" : "stock-badge low"}>{item.stock === 0 ? "Habis" : `${item.stock} ${item.unit}`}</div></div>)}</article></section>
     <section className="assistant-strip"><div className="assistant-icon"><Sparkles /></div><div><strong>Asisten inventory</strong><p>{voiceText || "Tekan mikrofon lalu ucapkan, “Tambahkan stok fresh milk sebanyak 20 kotak.”"}</p></div><button className={listening ? "voice-button listening" : "voice-button"} onClick={startVoice}><Mic size={18}/>{listening ? "Mendengarkan…" : "Mulai bicara"}</button></section></div>;
 }
-
 function WarehouseView() { return <div className="page-content"><section className="page-heading"><div><h2>Denah gudang interaktif</h2><p>Petakan dry storage, chiller, freezer, beverage bar, dan area kemasan.</p></div><div className="live-pill"><span/> Tersimpan otomatis</div></section><article className="panel warehouse-card"><div className="warehouse-info"><div><strong>Central Kitchen &amp; Storage — Monjok</strong><span>8 zona · 24 rak · inventaris F&amp;B</span></div><div className="capacity"><span>Kapasitas 72%</span><div><i/></div></div></div><div className="canvas-shell"><WarehouseCanvas/></div></article></div> }
-function Reports({items}:{items:Item[]}) { const data=useMemo(()=>items.map((item)=>({name:item.sku,value:getStockHealth(item).restock})).filter((item)=>item.value>0).sort((a,b)=>b.value-a.value).slice(0,12),[items]); return <div className="page-content"><section className="page-heading"><div><h2>Laporan persediaan</h2><p>Analisis kebutuhan restock pada setiap item.</p></div><button className="primary" onClick={()=>window.print()}><FileDown size={17}/> Cetak PDF</button></section><section className="report-grid"><article className="panel report-chart"><PanelTitle title="Prioritas restock per item" subtitle="Rekomendasi jumlah pemesanan berdasarkan SKU"/><div className="bar-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)"/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:10}}/><YAxis axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:12}}/><Tooltip/><Bar dataKey="value" name="Saran restock" fill="#6d5dfc" radius={[8,8,0,0]}/></BarChart></ResponsiveContainer></div></article><article className="panel report-summary"><PanelTitle title="Ringkasan September" subtitle="Kinerja inventaris"/><div className="report-metric"><span>Akurasi stok</span><strong>97,8%</strong><i style={{width:"97.8%"}}/></div><div className="report-metric"><span>Item perlu perhatian</span><strong>{items.filter((item)=>getStockHealth(item).label!=="Aman").length}</strong><i style={{width:`${Math.min(100,(items.filter((item)=>getStockHealth(item).label!=="Aman").length/items.length)*100)}%`}}/></div><div className="report-metric"><span>Pemenuhan permintaan</span><strong>94,2%</strong><i style={{width:"94.2%"}}/></div><div className="report-note"><ClipboardCheck/><div><strong>Stok HORECA terpantau</strong><p>Harga merupakan estimasi demo dan dapat diperbarui sesuai quotation supplier.</p></div></div></article></section></div> }
-
 function StatCard({title,value,note,icon,tone}:{title:string;value:string;note:string;icon:React.ReactNode;tone:string}) { return <article className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div className="stat-copy"><span>{title}</span><strong>{value}</strong><small>{note}</small></div><div className={`spark ${tone}`}><i/><i/><i/><i/><i/></div></article> }
 function PanelTitle({title,subtitle,action,onAction}:{title:string;subtitle:string;action?:string;onAction?:()=>void}) { return <div className="panel-title"><div><h3>{title}</h3><p>{subtitle}</p></div>{action&&<button onClick={onAction}>{action}</button>}</div> }
 function TransactionRow({trx}:{trx:(typeof transactions)[number]}) { return <div className="transaction-row"><span className={`trx-icon ${trx.tone}`}>{trx.tone==="in"?<ArrowDownToLine/>:trx.tone==="out"?<ArrowUpFromLine/>:trx.tone==="transfer"?<Truck/>:<CircleAlert/>}</span><div><strong>{trx.item}</strong><small>{trx.type} · {trx.id}</small></div><div><b>{trx.qty}</b><small>{trx.time}</small></div></div> }
