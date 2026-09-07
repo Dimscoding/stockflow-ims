@@ -153,13 +153,63 @@ export default function Home() {
 }
 
 function Dashboard({ totals, items, greeting, voiceText, listening, startVoice, onSelect, onNavigate }: { totals: { units: number; value: number; low: number; empty: number }; items: Item[]; greeting: string; voiceText: string; listening: boolean; startVoice: () => void; onSelect: (item: Item) => void; onNavigate: (key: NavKey) => void }) {
-  return <div className="page-content"><section className="welcome-row"><div><h2>{greeting}, Dimas</h2><p>Berikut kondisi persediaan operasional F&amp;B hari ini.</p></div><div className="live-pill"><span /> Data demo HORECA aktif</div></section>
-    <section className="stats-grid"><StatCard title="Total jenis barang" value={items.length.toString()} note={`${new Set(items.map((item) => item.group)).size} kelompok aktif`} icon={<Package />} tone="purple" /><StatCard title="Total unit tersedia" value={totals.units.toLocaleString("id-ID")} note="Seluruh lokasi penyimpanan" icon={<Boxes />} tone="blue" /><StatCard title="Nilai persediaan" value={money.format(totals.value)} note="Berdasarkan harga estimasi" icon={<BarChart3 />} tone="green" /><StatCard title="Perlu perhatian" value={(totals.low + totals.empty).toString()} note={`${totals.empty} barang habis`} icon={<CircleAlert />} tone="orange" /></section>
-    <section className="dashboard-grid"><article className="panel movement-panel"><PanelTitle title="Pergerakan stok" subtitle="Barang masuk dan keluar selama 7 hari" /><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={movementData}><defs><linearGradient id="incoming" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6d5dfc" stopOpacity={.28}/><stop offset="95%" stopColor="#6d5dfc" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)"/><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:12}}/><YAxis axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:12}}/><Tooltip contentStyle={{borderRadius:14,border:"1px solid var(--line)",background:"var(--panel)",color:"var(--text)"}}/><Area type="monotone" dataKey="incoming" stroke="#6d5dfc" strokeWidth={3} fill="url(#incoming)"/><Area type="monotone" dataKey="outgoing" stroke="#ffb547" strokeWidth={2.5} fill="transparent"/></AreaChart></ResponsiveContainer></div><div className="legend"><span><i className="purple-dot"/>Barang masuk</span><span><i className="orange-dot"/>Barang keluar</span></div></article>
-      <article className="panel category-panel"><PanelTitle title="Kebutuhan stok per item" subtitle="Prioritas berdasarkan stok minimum" /><StockNeedsPanel items={items} onSelect={onSelect}/></article>
-      <article className="panel transaction-panel"><PanelTitle title="Aktivitas terbaru" subtitle="Transaksi terbaru dari seluruh gudang" action="Lihat semua" onAction={() => onNavigate("transactions")} />{transactions.slice(0,3).map((trx) => <TransactionRow key={trx.id} trx={trx}/>)}</article>
-      <article className="panel attention-panel"><PanelTitle title="Stok perlu perhatian" subtitle="Di bawah batas minimum" action="Kelola stok" onAction={() => onNavigate("inventory")} />{items.filter((item) => item.stock <= item.minimum).slice(0,3).map((item) => <div className="stock-alert" key={item.id}><div className="product-icon"><Package size={18}/></div><div><strong>{item.name}</strong><small>{item.sku} · {item.warehouse}</small></div><div className={item.stock === 0 ? "stock-badge empty" : "stock-badge low"}>{item.stock === 0 ? "Habis" : `${item.stock} ${item.unit}`}</div></div>)}</article></section>
-    <section className="assistant-strip"><div className="assistant-icon"><Sparkles /></div><div><strong>Asisten inventory</strong><p>{voiceText || "Tekan mikrofon lalu ucapkan, “Tambahkan stok fresh milk sebanyak 20 kotak.”"}</p></div><button className={listening ? "voice-button listening" : "voice-button"} onClick={startVoice}><Mic size={18}/>{listening ? "Mendengarkan…" : "Mulai bicara"}</button></section></div>;
+  const attention = items
+    .filter((item) => getStockHealth(item).label !== "Aman")
+    .sort((a,b) => a.stock - b.stock)
+    .slice(0,5);
+  return <div className="page-content dashboard-reference">
+    <section className="dashboard-welcome">
+      <div><h2>{greeting}, Dimas</h2><p>Berikut kondisi persediaan operasional F&amp;B hari ini.</p></div>
+    </section>
+
+    <section className="stats-grid dashboard-kpis">
+      <StatCard title="Total jenis barang" value={items.length.toString()} note={`${new Set(items.map((item) => item.group)).size} kelompok kategori`} icon={<Package />} tone="purple" />
+      <StatCard title="Total unit tersedia" value={totals.units.toLocaleString("id-ID")} note="Seluruh lokasi" icon={<Boxes />} tone="blue" />
+      <StatCard title="Nilai persediaan" value={money.format(totals.value)} note="Berdasarkan harga estimasi" icon={<BarChart3 />} tone="green" />
+      <StatCard title="Perlu perhatian" value={(totals.low + totals.empty).toString()} note={`${totals.low} perlu restock · ${totals.empty} habis`} icon={<CircleAlert />} tone="orange" />
+    </section>
+
+    <section className="dashboard-reference-grid">
+      <article className="panel movement-panel reference-movement">
+        <PanelTitle title="Pergerakan stok" subtitle="Barang masuk dan keluar selama 7 hari terakhir" />
+        <div className="chart-wrap reference-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={movementData}>
+          <defs><linearGradient id="incoming" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#5f5af6" stopOpacity={.24}/><stop offset="95%" stopColor="#5f5af6" stopOpacity={0}/></linearGradient></defs>
+          <CartesianGrid strokeDasharray="4 5" vertical={false} stroke="var(--line)"/>
+          <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:11}}/>
+          <YAxis axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:11}}/>
+          <Tooltip contentStyle={{borderRadius:14,border:"1px solid var(--line)",background:"var(--panel)",color:"var(--text)",boxShadow:"0 14px 30px rgba(22,31,45,.12)"}}/>
+          <Area type="monotone" dataKey="incoming" name="Masuk" stroke="#5f5af6" strokeWidth={3} fill="url(#incoming)"/>
+          <Area type="monotone" dataKey="outgoing" name="Keluar" stroke="#ff9f1c" strokeWidth={2.5} fill="transparent"/>
+        </AreaChart></ResponsiveContainer></div>
+        <div className="legend reference-legend"><span><i className="purple-dot"/>Barang masuk</span><span><i className="orange-dot"/>Barang keluar</span></div>
+      </article>
+
+      <article className="panel attention-panel reference-attention">
+        <PanelTitle title="Stok perlu perhatian" subtitle="Di bawah batas minimum" action="Kelola stok →" onAction={() => onNavigate("inventory")} />
+        <div className="reference-attention-list">{attention.map((item) => {
+          const health=getStockHealth(item);
+          return <button key={item.id} className="reference-stock-row" onClick={()=>onSelect(item)}>
+            <span className="reference-product-icon"><Package size={18}/></span>
+            <span className="reference-product-copy"><strong>{item.name}</strong><small>{item.sku}</small><em>{item.category}</em></span>
+            <span className="reference-product-stock"><b>Stok: {item.stock} {item.unit}</b><small>Min: {item.minimum} {item.unit}</small></span>
+            <span className={`status ${health.tone}`}>{health.label}</span>
+          </button>
+        })}</div>
+        <button className="reference-see-all" onClick={()=>onNavigate("inventory")}>Lihat semua barang perlu perhatian →</button>
+      </article>
+
+      <article className="panel transaction-panel reference-activity">
+        <PanelTitle title="Aktivitas terbaru" subtitle="Transaksi terbaru dari seluruh gudang" action="Lihat semua →" onAction={() => onNavigate("transactions")} />
+        <div className="reference-activity-list">{transactions.slice(0,5).map((trx) => <TransactionRow key={trx.id} trx={trx}/>)}</div>
+      </article>
+    </section>
+
+    <section className="assistant-strip reference-assistant">
+      <div className="assistant-icon"><Sparkles /></div>
+      <div><strong>Asisten inventory</strong><p>{voiceText || "Tekan mikrofon lalu ucapkan, “Tambahkan stok fresh milk sebanyak 20 kotak.”"}</p></div>
+      <button className={listening ? "voice-button listening" : "voice-button"} onClick={startVoice}><Mic size={18}/>{listening ? "Mendengarkan…" : "Mulai bicara"}</button>
+    </section>
+  </div>;
 }
 function WarehouseView() { return <div className="page-content"><section className="page-heading"><div><h2>Denah gudang interaktif</h2><p>Petakan dry storage, chiller, freezer, beverage bar, dan area kemasan.</p></div><div className="live-pill"><span/> Tersimpan otomatis</div></section><article className="panel warehouse-card"><div className="warehouse-info"><div><strong>Central Kitchen &amp; Storage — Monjok</strong><span>8 zona · 24 rak · inventaris F&amp;B</span></div><div className="capacity"><span>Kapasitas 72%</span><div><i/></div></div></div><div className="canvas-shell"><WarehouseCanvas/></div></article></div> }
 function StatCard({title,value,note,icon,tone}:{title:string;value:string;note:string;icon:React.ReactNode;tone:string}) { return <article className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div className="stat-copy"><span>{title}</span><strong>{value}</strong><small>{note}</small></div><div className={`spark ${tone}`}><i/><i/><i/><i/><i/></div></article> }
