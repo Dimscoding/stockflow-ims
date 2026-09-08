@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, ClipboardList, Clock3, FileDown, PackageCheck, Plus, Truck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Item } from "@/data/inventory";
 import { getStockHealth } from "@/components/management-views";
 
@@ -27,8 +27,10 @@ const seedSuppliers: Supplier[] = [
 
 function useStored<T>(key: string, seed: T) {
   const [value, setValue] = useState<T>(seed);
-  useEffect(() => { const raw = localStorage.getItem(key); if (raw) setValue(JSON.parse(raw) as T); }, [key]);
-  useEffect(() => { localStorage.setItem(key, JSON.stringify(value)); }, [key, value]);
+  const storageReady = useRef(false);
+  const seedValue = useRef(seed);
+  useEffect(() => { const raw = localStorage.getItem(key); if (!raw) { localStorage.setItem(key, JSON.stringify(seedValue.current)); storageReady.current = true; return; } const frame = requestAnimationFrame(() => { storageReady.current = true; setValue(JSON.parse(raw) as T); }); return () => cancelAnimationFrame(frame); }, [key]);
+  useEffect(() => { if (storageReady.current) localStorage.setItem(key, JSON.stringify(value)); }, [key, value]);
   return [value, setValue] as const;
 }
 
@@ -39,12 +41,15 @@ export default function SupplierPOView({ items }: { items: Item[] }) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [note, setNote] = useState("");
   const [filter, setFilter] = useState<"Semua" | POStatus>("Semua");
+  const [comparisonItemId, setComparisonItemId] = useState("");
 
   const supplier = suppliers.find((entry) => entry.id === supplierId) ?? suppliers[0];
   const restockItems = useMemo(() => items.map((item) => ({ item, health: getStockHealth(item) })).filter(({ health }) => health.restock > 0).sort((a,b) => b.health.restock - a.health.restock), [items]);
   const visibleOrders = orders.filter((order) => filter === "Semua" || order.status === filter);
   const overdue = orders.filter((order) => order.status !== "Diterima" && order.status !== "Draft" && order.expectedAt < today()).length;
   const pendingValue = orders.filter((order) => order.status !== "Diterima").reduce((sum, order) => sum + order.items.reduce((sub, line) => sub + line.qty * line.price, 0), 0);
+  const comparisonItem = items.find((item) => item.id === comparisonItemId) ?? restockItems[0]?.item ?? items[0];
+  const quotes = comparisonItem ? suppliers.map((entry, index) => ({ supplier: entry, price: Math.round(comparisonItem.price * (0.94 + ((index * 7 + Number(comparisonItem.id)) % 13) / 100)) })).sort((a,b)=>a.price-b.price) : [];
 
   function createPO() {
     const chosen = restockItems.filter(({ item }) => selected[item.id]);
@@ -92,6 +97,8 @@ export default function SupplierPOView({ items }: { items: Item[] }) {
 
       <article className="panel supplier-list-card"><div className="section-title"><div><h3>Ringkasan supplier</h3><p>Lead time dan status pemasok.</p></div></div>{suppliers.map((entry)=><div className="supplier-row" key={entry.id}><span className="supplier-icon"><Truck size={16}/></span><div><strong>{entry.name}</strong><small>{entry.category}</small></div><span>{entry.leadDays} hari</span><b className={entry.status === "Aktif" ? "supplier-ok" : "supplier-warn"}>{entry.status}</b></div>)}</article>
     </section>
+
+    <article className="panel price-comparison"><div className="section-title"><div><h3>Perbandingan harga supplier</h3><p>Simulasi penawaran per satuan untuk membantu keputusan purchasing.</p></div><select value={comparisonItem?.id ?? ""} onChange={(event)=>setComparisonItemId(event.target.value)}>{items.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div className="quote-grid">{quotes.slice(0,5).map((quote,index)=><div key={quote.supplier.id} className={index===0?"best-quote":""}><span><strong>{quote.supplier.name}</strong><small>{quote.supplier.leadDays} hari · {quote.supplier.status}</small></span><b>{money.format(quote.price)}<small>/{comparisonItem?.unit}</small></b>{index===0&&<em>Harga terbaik</em>}</div>)}</div><p className="simulation-note">Harga bersifat simulasi demo dan dapat diganti dengan penawaran supplier aktual saat database purchasing diaktifkan.</p></article>
 
     <article className="panel po-history">
       <div className="po-history-head"><div><h3>Riwayat Purchase Order</h3><p>Status: Draft → Diajukan → Disetujui → Dipesan → Diterima.</p></div><select value={filter} onChange={(e)=>setFilter(e.target.value as "Semua"|POStatus)}><option>Semua</option><option>Draft</option><option>Diajukan</option><option>Disetujui</option><option>Dipesan</option><option>Diterima</option></select></div>

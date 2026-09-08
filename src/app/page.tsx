@@ -3,13 +3,13 @@
 import dynamic from "next/dynamic";
 import {
   ArrowDownToLine, ArrowUpFromLine, BarChart3, Boxes, Building2,
-  ChevronDown, CircleAlert, ClipboardCheck, FileDown, LayoutDashboard,
+  ChevronDown, CircleAlert, ClipboardCheck, LayoutDashboard,
   Menu, Mic, Moon, Package, Plus, Search, Settings, Sparkles, Sun,
   Truck, Warehouse, X, CalendarClock,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid,
+  Area, AreaChart, CartesianGrid,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { seedItems, type Item } from "@/data/inventory";
@@ -19,8 +19,7 @@ import { TransactionsAdvanced, StocktakeAdvanced } from "@/components/transactio
 import SupplierPOView from "@/components/supplier-po-view";
 import WasteReportsView from "@/components/waste-reports-view";
 import {
-  exportInventory, getStockHealth, ItemDetailModal, SettingsView,
-  StockNeedsPanel, UsersView,
+  getStockHealth, ItemDetailModal, SettingsView, UsersView,
   seedStockTransactions, type StockTransaction,
 } from "@/components/management-views";
 
@@ -73,6 +72,8 @@ export default function Home() {
   const [greeting, setGreeting] = useState("Selamat datang");
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>(seedStockTransactions);
+  const itemsStorageReady = useRef(false);
+  const transactionStorageReady = useRef(false);
 
   useEffect(() => {
     const now = new Date();
@@ -84,19 +85,19 @@ export default function Home() {
 
   useEffect(() => {
     const stored = localStorage.getItem("stockflow-horeca-items-v1");
-    if (!stored) return;
-    const frame = requestAnimationFrame(() => setItems(JSON.parse(stored) as Item[]));
+    if (!stored) { localStorage.setItem("stockflow-horeca-items-v1", JSON.stringify(seedItems)); itemsStorageReady.current = true; return; }
+    const frame = requestAnimationFrame(() => { itemsStorageReady.current = true; setItems(JSON.parse(stored) as Item[]); });
     return () => cancelAnimationFrame(frame);
   }, []);
-  useEffect(() => { localStorage.setItem("stockflow-horeca-items-v1", JSON.stringify(items)); }, [items]);
+  useEffect(() => { if (itemsStorageReady.current) localStorage.setItem("stockflow-horeca-items-v1", JSON.stringify(items)); }, [items]);
 
   useEffect(() => {
     const stored = localStorage.getItem("stockflow-transactions-v1");
-    if (!stored) return;
-    const frame = requestAnimationFrame(() => setStockTransactions(JSON.parse(stored) as StockTransaction[]));
+    if (!stored) { localStorage.setItem("stockflow-transactions-v1", JSON.stringify(seedStockTransactions)); transactionStorageReady.current = true; return; }
+    const frame = requestAnimationFrame(() => { transactionStorageReady.current = true; setStockTransactions(JSON.parse(stored) as StockTransaction[]); });
     return () => cancelAnimationFrame(frame);
   }, []);
-  useEffect(() => { localStorage.setItem("stockflow-transactions-v1", JSON.stringify(stockTransactions)); }, [stockTransactions]);
+  useEffect(() => { if (transactionStorageReady.current) localStorage.setItem("stockflow-transactions-v1", JSON.stringify(stockTransactions)); }, [stockTransactions]);
 
   const totals = useMemo(() => {
     const units = items.reduce((sum, item) => sum + item.stock, 0);
@@ -112,6 +113,26 @@ export default function Home() {
     if (record.type === "out" && record.qty > item.stock) return `Stok tidak cukup. Tersedia ${item.stock} ${item.unit}.`;
     setItems((current) => current.map((entry) => entry.id === record.itemId ? { ...entry, stock: entry.stock + (record.type === "in" ? record.qty : -record.qty) } : entry));
     setStockTransactions((current) => [record, ...current]);
+    return null;
+  }
+  function updateStockTransaction(previous: StockTransaction, next: StockTransaction) {
+    const item = items.find((entry) => entry.id === previous.itemId);
+    if (!item || previous.itemId !== next.itemId || previous.type !== next.type) return "Barang atau jenis transaksi tidak dapat diubah dari editor cepat.";
+    const previousDelta = previous.type === "in" ? previous.qty : -previous.qty;
+    const nextDelta = next.type === "in" ? next.qty : -next.qty;
+    const correctedStock = item.stock - previousDelta + nextDelta;
+    if (correctedStock < 0) return `Perubahan ditolak. Stok hanya tersedia ${item.stock} ${item.unit}.`;
+    setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, stock: correctedStock } : entry));
+    setStockTransactions((current) => current.map((entry) => entry.id === previous.id ? next : entry));
+    return null;
+  }
+  function deleteStockTransaction(record: StockTransaction) {
+    const delta = record.type === "in" ? record.qty : -record.qty;
+    const item = items.find((entry) => entry.id === record.itemId);
+    if (!item) return "Barang transaksi tidak ditemukan.";
+    if (item.stock - delta < 0) return `Transaksi masuk ini tidak dapat dihapus karena stoknya sudah terpakai. Stok tersisa ${item.stock} ${item.unit}.`;
+    setItems((current) => current.map((entry) => entry.id === record.itemId ? { ...entry, stock: entry.stock - delta } : entry));
+    setStockTransactions((current) => current.filter((entry) => entry.id !== record.id));
     return null;
   }
   function startVoice() {
@@ -140,15 +161,15 @@ export default function Home() {
       <header className="topbar"><button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Buka menu"><Menu /></button><div><p className="eyebrow">{todayLabel}</p><h1>{navItems.find((item) => item.key === active)?.label}</h1></div><div className="top-actions"><label className="search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari barang atau SKU…" /></label><button className="icon-button" onClick={() => setDark(!dark)} aria-label="Ganti tema">{dark ? <Sun size={18} /> : <Moon size={18} />}</button><button className="primary" onClick={() => setShowAdd(true)}><Plus size={18} /> Tambah barang</button></div></header>
       {active === "dashboard" && <Dashboard totals={totals} items={items} greeting={greeting} voiceText={voiceText} listening={listening} startVoice={startVoice} onSelect={setSelectedItem} onNavigate={activate} />}
       {active === "inventory" && <InventoryAdvanced items={filteredItems} query={query} setQuery={setQuery} onAdd={() => setShowAdd(true)} onSelect={setSelectedItem} />}
-      {active === "transactions" && <TransactionsAdvanced items={items} records={stockTransactions} onRecord={recordStockTransaction} onUpdateRecords={setStockTransactions}/>} 
+      {active === "transactions" && <TransactionsAdvanced items={items} records={stockTransactions} onRecord={recordStockTransaction} onUpdate={updateStockTransaction} onDelete={deleteStockTransaction}/>}
       {active === "stocktake" && <StocktakeAdvanced items={items} onApply={(counts) => setItems((current) => current.map((item) => ({ ...item, stock: Number(counts[item.id] ?? item.stock) })))}/>} 
-      {active === "batches" && <BatchExpiryView items={items}/>} 
-      {active === "warehouse" && <WarehouseView />}{active === "reports" && <WasteReportsView items={items} />}
+      {active === "batches" && <BatchExpiryView items={items} transactions={stockTransactions}/>}
+      {active === "warehouse" && <WarehouseView />}{active === "reports" && <WasteReportsView items={items} transactions={stockTransactions} />}
       {active === "suppliers" && <SupplierPOView items={items}/>} {active === "users" && <UsersView/>}{active === "settings" && <SettingsView/>}
     </main>
     <nav className="mobile-nav">{navItems.slice(0, 4).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "active" : ""} onClick={() => activate(key)}><Icon size={19} /><span>{label.split(" ")[0]}</span></button>)}</nav>
     {showAdd && <AddItemModal onClose={() => setShowAdd(false)} onSave={(item) => { setItems((current) => [item, ...current]); setShowAdd(false); setActive("inventory"); }} />}
-    {selectedItem && <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)}/>}
+    {selectedItem && <ItemDetailModal item={items.find((item) => item.id === selectedItem.id) ?? selectedItem} records={stockTransactions} onClose={() => setSelectedItem(null)}/>}
   </div>;
 }
 
@@ -215,7 +236,6 @@ function WarehouseView() { return <div className="page-content"><section classNa
 function StatCard({title,value,note,icon,tone}:{title:string;value:string;note:string;icon:React.ReactNode;tone:string}) { return <article className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div className="stat-copy"><span>{title}</span><strong>{value}</strong><small>{note}</small></div><div className={`spark ${tone}`}><i/><i/><i/><i/><i/></div></article> }
 function PanelTitle({title,subtitle,action,onAction}:{title:string;subtitle:string;action?:string;onAction?:()=>void}) { return <div className="panel-title"><div><h3>{title}</h3><p>{subtitle}</p></div>{action&&<button onClick={onAction}>{action}</button>}</div> }
 function ActivityTableRow({trx}:{trx:(typeof transactions)[number]}) { return <tr><td><span className={`trx-icon ${trx.tone}`}>{trx.tone==="in"?<ArrowDownToLine/>:trx.tone==="out"?<ArrowUpFromLine/>:trx.tone==="transfer"?<Truck/>:<CircleAlert/>}</span></td><td><strong>{trx.item}</strong></td><td><span>{trx.type}</span><small>{trx.id}</small></td><td><b>{trx.qty}</b></td><td>{trx.time}</td></tr> }
-function TransactionRow({trx}:{trx:(typeof transactions)[number]}) { return <div className="transaction-row"><span className={`trx-icon ${trx.tone}`}>{trx.tone==="in"?<ArrowDownToLine/>:trx.tone==="out"?<ArrowUpFromLine/>:trx.tone==="transfer"?<Truck/>:<CircleAlert/>}</span><div><strong>{trx.item}</strong><small>{trx.type} · {trx.id}</small></div><div><b>{trx.qty}</b><small>{trx.time}</small></div></div> }
 function AddItemModal({onClose,onSave}:{onClose:()=>void;onSave:(item:Item)=>void}) {
   const [form,setForm]=useState({name:"",sku:"",group:"Bahan Mentah",category:"Dairy, Egg & Fats",supplier:"",warehouse:"Dry Storage",stock:"",minimum:"",price:"",unit:"Pcs"});
   function submit(event:React.FormEvent){event.preventDefault();onSave({id:crypto.randomUUID(),name:form.name,sku:form.sku,group:form.group,category:form.category,supplier:form.supplier,warehouse:form.warehouse,stock:Number(form.stock),minimum:Number(form.minimum),price:Number(form.price),unit:form.unit});}
