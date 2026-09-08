@@ -4,7 +4,7 @@ import {
   ArrowDownToLine, ArrowUpFromLine, Building2, CheckCircle2, CircleAlert,
   FileDown, Package, Plus, Save, ShieldCheck, Trash2, UserRound, X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Item } from "@/data/inventory";
 
 export type StockHealth = "Aman" | "Mau habis" | "Perlu restock" | "Habis";
@@ -28,6 +28,13 @@ export type StockTransaction = {
   unit: string;
   party: string;
   note: string;
+  user?: string;
+  enteredQty?: number;
+  enteredUnit?: string;
+  conversionFactor?: number;
+  batchNo?: string;
+  productionDate?: string;
+  expiryDate?: string;
 };
 
 export const seedStockTransactions: StockTransaction[] = [
@@ -175,15 +182,24 @@ export function SettingsView() {
   </form></div>;
 }
 
-export function ItemDetailModal({ item, onClose }: { item: Item; onClose: () => void }) {
+export function ItemDetailModal({ item, records, onClose }: { item: Item; records: StockTransaction[]; onClose: () => void }) {
   const health = getStockHealth(item);
-  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><article className="modal item-detail-modal" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><span className={`status ${health.tone}`}>{health.label}</span><h2>{item.name}</h2><p>{item.sku} · {item.group}</p></div><button onClick={onClose} aria-label="Tutup detail"><X/></button></div><div className="stock-gauge"><div><span>Stok terhadap target</span><b>{health.percentage}%</b></div><div><i style={{ width: `${health.percentage}%` }}/></div></div><div className="detail-grid"><div><small>Stok tersedia</small><strong>{item.stock} {item.unit}</strong></div><div><small>Stok minimum</small><strong>{item.minimum} {item.unit}</strong></div><div><small>Saran pemesanan</small><strong>{health.restock ? `${health.restock} ${item.unit}` : "Belum diperlukan"}</strong></div><div><small>Harga estimasi</small><strong>{new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(item.price)}</strong></div><div><small>Kategori</small><strong>{item.category}</strong></div><div><small>Lokasi</small><strong>{item.warehouse}</strong></div><div className="full"><small>Supplier</small><strong>{item.supplier}</strong></div></div>{health.restock > 0 && <div className="restock-advice"><CircleAlert/><p>Segera buat permintaan pembelian minimal <b>{health.restock} {item.unit}</b> agar stok kembali ke target operasional.</p></div>}</article></div>;
+  const itemRecords = records.filter((record) => record.itemId === item.id).sort((a, b) => b.date.localeCompare(a.date));
+  const outgoing = itemRecords.filter((record) => record.type === "out");
+  const firstDate = outgoing.length ? new Date(`${outgoing[outgoing.length - 1].date}T00:00:00`).getTime() : 0;
+  const latestDate = outgoing.length ? new Date(`${outgoing[0].date}T00:00:00`).getTime() : 0;
+  const spanDays = Math.max(1, Math.ceil((latestDate - firstDate) / 86400000) + 1);
+  const averageDailyUse = outgoing.reduce((sum, record) => sum + record.qty, 0) / spanDays;
+  const estimatedDays = averageDailyUse > 0 ? Math.ceil(item.stock / averageDailyUse) : null;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><article className="modal item-detail-modal" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><span className={`status ${health.tone}`}>{health.label}</span><h2>{item.name}</h2><p>{item.sku} · {item.group}</p></div><button onClick={onClose} aria-label="Tutup detail"><X/></button></div><div className="stock-gauge"><div><span>Stok terhadap target</span><b>{health.percentage}%</b></div><div><i style={{ width: `${health.percentage}%` }}/></div></div><div className="detail-grid"><div><small>Stok tersedia</small><strong>{item.stock} {item.unit}</strong></div><div><small>Stok minimum</small><strong>{item.minimum} {item.unit}</strong></div><div><small>Saran pemesanan</small><strong>{health.restock ? `${health.restock} ${item.unit}` : "Belum diperlukan"}</strong></div><div><small>Estimasi bertahan</small><strong>{estimatedDays === null ? "Belum ada data" : `${estimatedDays} hari`}</strong></div><div><small>Harga estimasi</small><strong>{new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(item.price)}</strong></div><div><small>Kategori</small><strong>{item.category}</strong></div><div><small>Lokasi</small><strong>{item.warehouse}</strong></div><div className="full"><small>Supplier</small><strong>{item.supplier}</strong></div></div>{health.restock > 0 && <div className="restock-advice"><CircleAlert/><p>Segera buat permintaan pembelian minimal <b>{health.restock} {item.unit}</b> agar stok kembali ke target operasional.</p></div>}<div className="item-history"><h3>Riwayat transaksi barang</h3>{itemRecords.length ? itemRecords.slice(0, 8).map((record) => <div key={record.id}><span className={`trx-icon ${record.type === "in" ? "in" : "out"}`}>{record.type === "in" ? <ArrowDownToLine/> : <ArrowUpFromLine/>}</span><span><strong>{record.type === "in" ? "Barang masuk" : "Barang keluar"}</strong><small>{formatDate(record.date)} · {record.user ?? "Administrator"}</small></span><b>{record.type === "in" ? "+" : "−"}{record.qty} {record.unit}</b></div>) : <p className="empty-copy">Belum ada transaksi untuk barang ini.</p>}</div></article></div>;
 }
 
 function useStoredList<T>(key: string, initial: T[]) {
   const [value, setValue] = useState(initial);
-  useEffect(() => { const stored = localStorage.getItem(key); if (!stored) return; const frame = requestAnimationFrame(() => setValue(JSON.parse(stored))); return () => cancelAnimationFrame(frame); }, [key]);
-  useEffect(() => { localStorage.setItem(key, JSON.stringify(value)); }, [key, value]);
+  const storageReady = useRef(false);
+  const initialValue = useRef(initial);
+  useEffect(() => { const stored = localStorage.getItem(key); if (!stored) { localStorage.setItem(key, JSON.stringify(initialValue.current)); storageReady.current = true; return; } const frame = requestAnimationFrame(() => { storageReady.current = true; setValue(JSON.parse(stored)); }); return () => cancelAnimationFrame(frame); }, [key]);
+  useEffect(() => { if (storageReady.current) localStorage.setItem(key, JSON.stringify(value)); }, [key, value]);
   return [value, setValue] as const;
 }
 
