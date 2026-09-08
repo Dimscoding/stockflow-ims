@@ -1,8 +1,9 @@
 "use client";
 
 import { AlertTriangle, CalendarClock, CheckCircle2, PackageOpen, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Item } from "@/data/inventory";
+import type { StockTransaction } from "@/components/management-views";
 
 type BatchStatus = "Aman" | "≤30 hari" | "≤14 hari" | "≤7 hari" | "Kedaluwarsa";
 
@@ -27,8 +28,10 @@ const seedBatches: BatchRecord[] = [
 ];
 
 function daysToExpiry(date: string) {
-  const today = new Date("2026-09-07T00:00:00+08:00");
-  const target = new Date(`${date}T00:00:00+08:00`);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const [year, month, day] = date.split("-").map(Number);
+  const target = new Date(year, month - 1, day);
   return Math.ceil((target.getTime() - today.getTime()) / 86400000);
 }
 
@@ -41,23 +44,29 @@ function statusFor(date: string): BatchStatus {
   return "Aman";
 }
 
-export default function BatchExpiryView({ items }: { items: Item[] }) {
+export default function BatchExpiryView({ items, transactions }: { items: Item[]; transactions: StockTransaction[] }) {
   const [records, setRecords] = useState<BatchRecord[]>(seedBatches);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<"Semua" | BatchStatus>("Semua");
-  const [form, setForm] = useState({ itemId: items[0]?.id ?? "", batchNo: "", qty: "", productionDate: "2026-09-07", expiryDate: "", condition: "Baik", note: "" });
+  const [form, setForm] = useState({ itemId: items[0]?.id ?? "", batchNo: "", qty: "", productionDate: new Date().toISOString().slice(0, 10), expiryDate: "", condition: "Baik", note: "" });
+  const storageReady = useRef(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("stockflow-batches-v1");
-    if (stored) setRecords(JSON.parse(stored));
+    if (!stored) { localStorage.setItem("stockflow-batches-v1", JSON.stringify(seedBatches)); storageReady.current = true; return; }
+    const frame = requestAnimationFrame(() => { storageReady.current = true; setRecords(JSON.parse(stored)); });
+    return () => cancelAnimationFrame(frame);
   }, []);
-  useEffect(() => { localStorage.setItem("stockflow-batches-v1", JSON.stringify(records)); }, [records]);
+  useEffect(() => { if (storageReady.current) localStorage.setItem("stockflow-batches-v1", JSON.stringify(records)); }, [records]);
 
-  const visible = useMemo(() => records
+  const transactionBatches = useMemo<BatchRecord[]>(() => transactions.filter((record) => record.type === "in" && record.batchNo && record.expiryDate).map((record) => ({ id: `TRX-${record.id}`, itemId: record.itemId, itemName: record.item, batchNo: record.batchNo!, qty: record.qty, unit: record.unit, productionDate: record.productionDate || record.date, expiryDate: record.expiryDate!, supplier: record.party, condition: "Baik", note: `Dari transaksi ${record.id}` })), [transactions]);
+  const allRecords = useMemo(() => [...transactionBatches, ...records.filter((record) => !transactionBatches.some((transaction) => transaction.itemId === record.itemId && transaction.batchNo === record.batchNo))], [records, transactionBatches]);
+
+  const visible = useMemo(() => allRecords
     .filter((r) => filter === "Semua" || statusFor(r.expiryDate) === filter)
-    .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()), [records, filter]);
+    .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()), [allRecords, filter]);
 
-  const counts = useMemo(() => records.reduce<Record<BatchStatus, number>>((acc, r) => { acc[statusFor(r.expiryDate)] += 1; return acc; }, { Aman: 0, "≤30 hari": 0, "≤14 hari": 0, "≤7 hari": 0, Kedaluwarsa: 0 }), [records]);
+  const counts = useMemo(() => allRecords.reduce<Record<BatchStatus, number>>((acc, r) => { acc[statusFor(r.expiryDate)] += 1; return acc; }, { Aman: 0, "≤30 hari": 0, "≤14 hari": 0, "≤7 hari": 0, Kedaluwarsa: 0 }), [allRecords]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,7 +80,7 @@ export default function BatchExpiryView({ items }: { items: Item[] }) {
   return <div className="page-content batch-view">
     <section className="page-heading"><div><h2>Batch &amp; kedaluwarsa</h2><p>FEFO aktif: batch dengan tanggal kedaluwarsa terdekat diprioritaskan lebih dahulu.</p></div><button className="primary" onClick={() => setShowForm((v) => !v)}><Plus size={17}/> Batch masuk</button></section>
 
-    <section className="management-stats batch-stats"><div><PackageOpen/><span><small>Total batch</small><strong>{records.length}</strong></span></div><div><CalendarClock/><span><small>≤ 30 hari</small><strong>{counts["≤30 hari"] + counts["≤14 hari"] + counts["≤7 hari"]}</strong></span></div><div><AlertTriangle/><span><small>Kritis ≤ 7 hari</small><strong>{counts["≤7 hari"] + counts.Kedaluwarsa}</strong></span></div></section>
+    <section className="management-stats batch-stats"><div><PackageOpen/><span><small>Total batch</small><strong>{allRecords.length}</strong></span></div><div><CalendarClock/><span><small>≤ 30 hari</small><strong>{counts["≤30 hari"] + counts["≤14 hari"] + counts["≤7 hari"]}</strong></span></div><div><AlertTriangle/><span><small>Kritis ≤ 7 hari</small><strong>{counts["≤7 hari"] + counts.Kedaluwarsa}</strong></span></div></section>
 
     {showForm && <form className="panel batch-form" onSubmit={submit}><div className="form-grid"><label>Barang<select value={form.itemId} onChange={(e)=>setForm({...form,itemId:e.target.value})}>{items.map((i)=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label><label>No. batch<input required value={form.batchNo} onChange={(e)=>setForm({...form,batchNo:e.target.value})} placeholder="Contoh: FM-260907-A"/></label><label>Jumlah<input required type="number" min="1" value={form.qty} onChange={(e)=>setForm({...form,qty:e.target.value})}/></label><label>Tanggal produksi<input type="date" value={form.productionDate} onChange={(e)=>setForm({...form,productionDate:e.target.value})}/></label><label>Kedaluwarsa<input required type="date" value={form.expiryDate} onChange={(e)=>setForm({...form,expiryDate:e.target.value})}/></label><label>Kondisi<select value={form.condition} onChange={(e)=>setForm({...form,condition:e.target.value})}><option>Baik</option><option>Rusak</option><option>Basi</option><option>Kedaluwarsa</option></select></label><label className="full">Catatan<input value={form.note} onChange={(e)=>setForm({...form,note:e.target.value})} placeholder="Lokasi rak / alasan waste"/></label></div><button className="primary" type="submit">Simpan batch</button></form>}
 
