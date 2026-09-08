@@ -1,7 +1,7 @@
 "use client";
 
 import { Boxes, ChevronLeft, ChevronRight, Grid2X2, List, Package, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Item } from "@/data/inventory";
 import { exportInventory, getStockHealth, type StockHealth } from "@/components/management-views";
 
@@ -28,8 +28,6 @@ export default function InventoryAdvanced({ items, query, setQuery, onAdd, onSel
   const [sort, setSort] = useState<SortKey>("priority");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
-
-  useEffect(() => setPage(1), [query, status, sort, pageSize]);
 
   const processed = useMemo(() => {
     const result = items.filter((item) => status === "Semua" || getStockHealth(item).label === status).slice();
@@ -59,12 +57,12 @@ export default function InventoryAdvanced({ items, query, setQuery, onAdd, onSel
     </section>
     <article className="panel inventory-control-panel">
       <div className="inventory-toolbar-v2">
-        <label className="search inventory-search"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari barang, SKU, kategori, supplier…"/></label>
+        <label className="search inventory-search"><Search size={17}/><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="Cari barang, SKU, kategori, supplier…"/></label>
         <div className="view-switch"><button className={view === "card" ? "active" : ""} onClick={() => setView("card")}><Grid2X2 size={16}/> Card</button><button className={view === "table" ? "active" : ""} onClick={() => setView("table")}><List size={16}/> Table</button></div>
-        <select className="inventory-select" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}><option value="priority">Prioritas restock</option><option value="stock-asc">Stok terendah</option><option value="stock-desc">Stok tertinggi</option><option value="name">Nama A–Z</option></select>
+        <select className="inventory-select" value={sort} onChange={(e) => { setSort(e.target.value as SortKey); setPage(1); }}><option value="priority">Prioritas restock</option><option value="stock-asc">Stok terendah</option><option value="stock-desc">Stok tertinggi</option><option value="name">Nama A–Z</option></select>
         <button className="secondary" onClick={() => exportInventory(processed)}>Export CSV</button>
       </div>
-      <div className="status-filter-row">{statusOptions.map((option) => <button key={option} className={status === option ? "active" : ""} onClick={() => setStatus(option)}>{option}{option !== "Semua" && <b>{counts[option]}</b>}</button>)}</div>
+      <div className="status-filter-row">{statusOptions.map((option) => <button key={option} className={status === option ? "active" : ""} onClick={() => { setStatus(option); setPage(1); }}>{option}{option !== "Semua" && <b>{counts[option]}</b>}</button>)}</div>
     </article>
     {view === "card" ? <section className="inventory-card-grid">
       {visible.map((item) => { const health = getStockHealth(item); const estimate = daysLeft(item); return <button key={item.id} className="inventory-card" onClick={() => onSelect(item)}>
@@ -76,6 +74,6 @@ export default function InventoryAdvanced({ items, query, setQuery, onAdd, onSel
         <div className="inventory-card-foot"><span>{item.supplier}</span><strong>{money.format(item.stock * item.price)}</strong></div>
       </button>; })}
     </section> : <article className="panel table-panel inventory-table-v2"><div className="table-scroll"><table><thead><tr><th>Barang</th><th>Kategori</th><th>Supplier</th><th>Stok</th><th>Minimum</th><th>Status</th><th>Estimasi habis</th><th>Rekomendasi</th><th>Nilai stok</th><th>Aksi</th></tr></thead><tbody>{visible.map((item) => { const health = getStockHealth(item); return <tr key={item.id}><td><div className="item-name"><span><Boxes size={17}/></span><div><strong>{item.name}</strong><small>{item.sku}</small></div></div></td><td>{item.category}</td><td>{item.supplier}</td><td><b>{item.stock}</b> {item.unit}</td><td>{item.minimum} {item.unit}</td><td><span className={`status ${health.tone}`}>{health.label}</span></td><td>{daysLeft(item)} hari</td><td>{health.restock ? <b>{health.restock} {item.unit}</b> : "—"}</td><td>{money.format(item.stock * item.price)}</td><td><button className="table-action" onClick={() => onSelect(item)}>Detail</button></td></tr>; })}</tbody></table></div></article>}
-    <section className="inventory-pagination"><div>Menampilkan <b>{processed.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, processed.length)}</b> dari {processed.length} item</div><div className="page-size"><span>Per halaman</span><select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}><option value={12}>12</option><option value={18}>18</option><option value={24}>24</option></select></div><div className="page-buttons"><button disabled={currentPage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><ChevronLeft size={16}/></button><span>{currentPage} / {pages}</span><button disabled={currentPage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}><ChevronRight size={16}/></button></div></section>
+    <section className="inventory-pagination"><div>Menampilkan <b>{processed.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, processed.length)}</b> dari {processed.length} item</div><div className="page-size"><span>Per halaman</span><select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={12}>12</option><option value={18}>18</option><option value={24}>24</option></select></div><div className="page-buttons"><button disabled={currentPage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><ChevronLeft size={16}/></button><span>{currentPage} / {pages}</span><button disabled={currentPage >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}><ChevronRight size={16}/></button></div></section>
   </div>;
 }
