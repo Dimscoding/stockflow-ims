@@ -2,7 +2,8 @@
 
 import {
   ArrowDownToLine, ArrowUpFromLine, Building2, CheckCircle2, CircleAlert,
-  FileDown, Package, Plus, Save, ShieldCheck, Trash2, UserRound, X,
+  CalendarClock, ChevronLeft, ChevronRight, FileDown, Grid2X2, List,
+  Package, Plus, Save, Search, ShieldCheck, Trash2, UserRound, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Item } from "@/data/inventory";
@@ -28,12 +29,13 @@ export type StockTransaction = {
   unit: string;
   party: string;
   note: string;
+  user: string;
 };
 
 export const seedStockTransactions: StockTransaction[] = [
-  { id: "GRN-2026-00184", date: "2026-09-05", itemId: "1", item: "Fresh Milk Pasteurisasi 1 L", type: "in", qty: 24, unit: "Kotak", party: "Greenfields", note: "Penerimaan rutin" },
-  { id: "ISS-2026-00091", date: "2026-09-05", itemId: "16", item: "Biji Kopi House Blend Arabika/Robusta 70:30", type: "out", qty: 6, unit: "Kg", party: "Beverage Bar", note: "Kebutuhan operasional" },
-  { id: "GRN-2026-00183", date: "2026-09-04", itemId: "114", item: "Plastic Cup PET 16 oz + Lid", type: "in", qty: 8, unit: "Pack", party: "Kyodo", note: "Restock kemasan" },
+  { id: "GRN-2026-00184", date: "2026-09-05", itemId: "1", item: "Fresh Milk Pasteurisasi 1 L", type: "in", qty: 24, unit: "Kotak", party: "Greenfields", note: "Penerimaan rutin", user: "Dimas Riyanto" },
+  { id: "ISS-2026-00091", date: "2026-09-05", itemId: "16", item: "Biji Kopi House Blend Arabika/Robusta 70:30", type: "out", qty: 6, unit: "Kg", party: "Beverage Bar", note: "Kebutuhan operasional", user: "Fajar Akbar" },
+  { id: "GRN-2026-00183", date: "2026-09-04", itemId: "114", item: "Plastic Cup PET 16 oz + Lid", type: "in", qty: 8, unit: "Pack", party: "Kyodo", note: "Restock kemasan", user: "Rani Putri" },
 ];
 
 export function StockNeedsPanel({ items, onSelect }: { items: Item[]; onSelect: (item: Item) => void }) {
@@ -63,21 +65,60 @@ export function StockNeedsPanel({ items, onSelect }: { items: Item[]; onSelect: 
   </>;
 }
 
-export function TransactionsView({ items, records, onRecord }: { items: Item[]; records: StockTransaction[]; onRecord: (record: StockTransaction) => string | null }) {
+export function InventoryCatalogView({ items, query, setQuery, onAdd, onSelect }: { items: Item[]; query: string; setQuery: (value: string) => void; onAdd: () => void; onSelect: (item: Item) => void }) {
+  const [view, setView] = useState<"cards" | "table">("cards");
+  const [healthFilter, setHealthFilter] = useState("Semua");
+  const [sort, setSort] = useState("priority");
+  const [page, setPage] = useState(1);
+  const perPage = view === "cards" ? 12 : 24;
+  const filtered = useMemo(() => {
+    const result = items.filter((item) => healthFilter === "Semua" || getStockHealth(item).label === healthFilter);
+    return result.toSorted((a, b) => {
+      if (sort === "lowest") return a.stock - b.stock;
+      if (sort === "highest") return b.stock - a.stock;
+      if (sort === "name") return a.name.localeCompare(b.name, "id");
+      return getStockPriority(getStockHealth(a).label) - getStockPriority(getStockHealth(b).label) || a.stock - b.stock;
+    });
+  }, [healthFilter, items, sort]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const visible = filtered.slice((Math.min(page, totalPages) - 1) * perPage, Math.min(page, totalPages) * perPage);
+  function chooseFilter(value: string) { setHealthFilter(value); setPage(1); }
+
+  return <div className="page-content"><section className="page-heading"><div><h2>Katalog persediaan F&amp;B</h2><p>Pantau kondisi dan kebutuhan setiap item secara visual.</p></div><button className="primary" onClick={onAdd}><Plus size={18}/> Tambah barang</button></section>
+    <article className="inventory-controls panel"><label className="search wide"><Search size={17}/><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Cari barang, SKU, kategori, atau supplier…"/></label><div className="view-switch"><button className={view === "cards" ? "active" : ""} onClick={() => { setView("cards"); setPage(1); }} aria-label="Tampilan kartu"><Grid2X2/></button><button className={view === "table" ? "active" : ""} onClick={() => { setView("table"); setPage(1); }} aria-label="Tampilan tabel"><List/></button></div><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="priority">Prioritas restock</option><option value="lowest">Stok terendah</option><option value="highest">Stok tertinggi</option><option value="name">Nama A–Z</option></select><button className="secondary" onClick={() => exportInventory(filtered)}><FileDown size={17}/> Export CSV</button></article>
+    <div className="filter-pills">{["Semua", "Aman", "Mau habis", "Perlu restock", "Habis"].map((label) => <button key={label} className={healthFilter === label ? "active" : ""} onClick={() => chooseFilter(label)}>{label}<b>{label === "Semua" ? items.length : items.filter((item) => getStockHealth(item).label === label).length}</b></button>)}</div>
+    {view === "cards" ? <section className="stock-card-grid">{visible.map((item) => <StockCard key={item.id} item={item} onSelect={onSelect}/>)}</section> : <InventoryTable items={visible} onSelect={onSelect}/>}
+    {!visible.length && <div className="empty-state"><Package/><h3>Barang tidak ditemukan</h3><p>Ubah pencarian atau filter status stok.</p></div>}
+    <div className="pagination"><span>Menampilkan {visible.length} dari {filtered.length} item</span><div><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft/></button><b>{Math.min(page, totalPages)} / {totalPages}</b><button disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}><ChevronRight/></button></div></div>
+  </div>;
+}
+
+function StockCard({ item, onSelect }: { item: Item; onSelect: (item: Item) => void }) {
+  const health = getStockHealth(item);
+  const days = item.dailyUsage > 0 ? Math.floor(item.stock / item.dailyUsage) : 0;
+  return <button className={`stock-card ${health.tone}`} onClick={() => onSelect(item)}><div className="stock-card-top"><span className={`category-pill ${health.tone}`}>{item.category}</span><small>{item.sku}</small></div><h3>{item.name}</h3><div className="stock-total"><small>Total stok</small><div><strong>{item.stock.toLocaleString("id-ID")}</strong><span>{item.unit}</span></div></div><div className="stock-card-meta"><span>Minimum <b>{item.minimum}</b></span><span><CalendarClock/> ±{days} hari</span></div><div className="stock-card-bottom"><span className={`status ${health.tone}`}>{health.label}</span><b>{health.restock ? `Restock ${health.restock}` : "Stok cukup"}</b></div><div className="stock-card-supplier">{item.supplier}</div></button>;
+}
+
+function InventoryTable({ items, onSelect }: { items: Item[]; onSelect: (item: Item) => void }) { return <article className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>Barang</th><th>Kelompok &amp; kategori</th><th>Supplier</th><th>Lokasi</th><th>Stok</th><th>Estimasi bertahan</th><th>Harga estimasi</th><th>Kebutuhan</th><th>Saran restock</th><th>Aksi</th></tr></thead><tbody>{items.map((item) => { const health = getStockHealth(item); const days = item.dailyUsage > 0 ? Math.floor(item.stock / item.dailyUsage) : 0; return <tr key={item.id}><td><div className="item-name"><span><Package size={17}/></span><div><strong>{item.name}</strong><small>{item.sku}</small></div></div></td><td><div className="category-cell"><strong>{item.group}</strong><small>{item.category}</small></div></td><td>{item.supplier}</td><td>{item.warehouse}</td><td><b>{item.stock}</b> {item.unit}</td><td>±{days} hari</td><td>{formatMoney(item.price)}</td><td><span className={`status ${health.tone}`}>{health.label}</span></td><td>{health.restock ? <b>{health.restock} {item.unit}</b> : "—"}</td><td><button className="table-action" onClick={() => onSelect(item)}>Detail</button></td></tr>; })}</tbody></table></div></article>; }
+
+export function TransactionsView({ items, records, onRecord, onDelete }: { items: Item[]; records: StockTransaction[]; onRecord: (record: StockTransaction) => string | null; onDelete: (record: StockTransaction) => void }) {
   const [mode, setMode] = useState<"in" | "out">("in");
   const [message, setMessage] = useState("");
-  const [form, setForm] = useState({ itemId: items[0]?.id ?? "", qty: "", date: "2026-09-06", party: "", note: "" });
+  const [historyFilter, setHistoryFilter] = useState<"all" | "in" | "out">("all");
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [form, setForm] = useState({ itemId: items[0]?.id ?? "", qty: "", date: "2026-09-09", party: "", note: "", entryUnit: "base" });
   const selected = items.find((item) => item.id === form.itemId);
+  const visibleRecords = records.filter((record) => (historyFilter === "all" || record.type === historyFilter) && `${record.item} ${record.id} ${record.party} ${record.user}`.toLowerCase().includes(historyQuery.toLowerCase()));
   const update = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!selected) return;
-    const qty = Number(form.qty);
+    const qty = Number(form.qty) * (form.entryUnit === "purchase" ? selected.conversionFactor : 1);
     const record: StockTransaction = {
       id: `${mode === "in" ? "GRN" : "ISS"}-${Date.now().toString().slice(-8)}`,
       date: form.date, itemId: selected.id, item: selected.name, type: mode, qty, unit: selected.unit,
-      party: form.party || (mode === "in" ? selected.supplier : "Operasional"), note: form.note || "Tanpa catatan",
+      party: form.party || (mode === "in" ? selected.supplier : "Operasional"), note: form.note || "Tanpa catatan", user: "Dimas Riyanto",
     };
     const error = onRecord(record);
     if (error) { setMessage(error); return; }
@@ -95,16 +136,16 @@ export function TransactionsView({ items, records, onRecord }: { items: Item[]; 
           <label>Tanggal<input type="date" value={form.date} onChange={(e) => update("date", e.target.value)} required/></label>
           <label>Nama barang<select value={form.itemId} onChange={(e) => update("itemId", e.target.value)}>{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Jumlah<input type="number" min="1" value={form.qty} onChange={(e) => update("qty", e.target.value)} required/></label>
-          <label>Satuan<input value={selected?.unit ?? "-"} disabled/></label>
+          <label>Satuan transaksi<select value={form.entryUnit} onChange={(e) => update("entryUnit", e.target.value)}><option value="base">{selected?.unit ?? "Satuan stok"}</option><option value="purchase">{selected?.purchaseUnit ?? "Satuan pembelian"}</option></select></label>
           <label>{mode === "in" ? "Supplier" : "Pengambil / Divisi"}<input value={form.party} onChange={(e) => update("party", e.target.value)} placeholder={mode === "in" ? selected?.supplier : "Contoh: Kitchen"}/></label>
           <label>Keterangan<input value={form.note} onChange={(e) => update("note", e.target.value)} placeholder="Catatan transaksi"/></label>
         </div>
         {message && <div className={message.includes("berhasil") ? "form-message success" : "form-message error"}>{message}</div>}
         <button className="primary" type="submit"><Save size={16}/> Simpan transaksi</button>
       </form>
-      <article className="panel transaction-insight"><span className={`big-transaction-icon ${mode}`} >{mode === "in" ? <ArrowDownToLine/> : <ArrowUpFromLine/>}</span><small>Stok saat ini</small><strong>{selected?.stock ?? 0} {selected?.unit}</strong><p>Minimum stok: {selected?.minimum ?? 0} {selected?.unit}</p>{selected && <span className={`status ${getStockHealth(selected).tone}`}>{getStockHealth(selected).label}</span>}</article>
+      <article className="panel transaction-insight"><span className={`big-transaction-icon ${mode}`} >{mode === "in" ? <ArrowDownToLine/> : <ArrowUpFromLine/>}</span><small>Stok saat ini</small><strong>{selected?.stock ?? 0} {selected?.unit}</strong><p>1 {selected?.purchaseUnit} = {selected?.conversionFactor} {selected?.unit}</p>{selected && <span className={`status ${getStockHealth(selected).tone}`}>{getStockHealth(selected).label}</span>}</article>
     </section>
-    <article className="panel history-panel"><div className="section-title"><div><h3>Riwayat transaksi</h3><p>Penerimaan dan pengeluaran terbaru.</p></div><b>{records.length} transaksi</b></div><div className="table-scroll"><table><thead><tr><th>Tanggal</th><th>Barang</th><th>Jenis</th><th>Jumlah</th><th>Supplier / Pengambil</th><th>Keterangan</th></tr></thead><tbody>{records.map((record) => <tr key={record.id}><td>{formatDate(record.date)}</td><td><strong>{record.item}</strong><small className="table-meta">{record.id}</small></td><td><span className={`status ${record.type === "in" ? "safe" : "low"}`}>{record.type === "in" ? "Masuk" : "Keluar"}</span></td><td><b>{record.type === "in" ? "+" : "−"}{record.qty}</b> {record.unit}</td><td>{record.party}</td><td>{record.note}</td></tr>)}</tbody></table></div></article>
+    <article className="panel history-panel"><div className="section-title"><div><h3>Riwayat transaksi</h3><p>Penerimaan dan pengeluaran terbaru.</p></div><b>{visibleRecords.length} transaksi</b></div><div className="history-filters"><label className="search wide"><Search size={16}/><input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Cari transaksi…"/></label><select value={historyFilter} onChange={(event) => setHistoryFilter(event.target.value as "all" | "in" | "out")}><option value="all">Semua jenis</option><option value="in">Barang masuk</option><option value="out">Barang keluar</option></select></div><div className="table-scroll"><table><thead><tr><th>Tanggal</th><th>Barang</th><th>Jenis</th><th>Jumlah</th><th>Supplier / Pengambil</th><th>Pengguna</th><th>Keterangan</th><th>Aksi</th></tr></thead><tbody>{visibleRecords.map((record) => <tr key={record.id}><td>{formatDate(record.date)}</td><td><strong>{record.item}</strong><small className="table-meta">{record.id}</small></td><td><span className={`status ${record.type === "in" ? "safe" : "low"}`}>{record.type === "in" ? "Masuk" : "Keluar"}</span></td><td><b>{record.type === "in" ? "+" : "−"}{record.qty}</b> {record.unit}</td><td>{record.party}</td><td>{record.user || "Dimas Riyanto"}</td><td>{record.note}</td><td><button className="table-action danger" aria-label={`Hapus ${record.id}`} onClick={() => { if (window.confirm(`Hapus transaksi ${record.id}? Stok akan dikembalikan.`)) onDelete(record); }}><Trash2/></button></td></tr>)}</tbody></table></div></article>
   </div>;
 }
 
@@ -177,7 +218,8 @@ export function SettingsView() {
 
 export function ItemDetailModal({ item, onClose }: { item: Item; onClose: () => void }) {
   const health = getStockHealth(item);
-  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><article className="modal item-detail-modal" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><span className={`status ${health.tone}`}>{health.label}</span><h2>{item.name}</h2><p>{item.sku} · {item.group}</p></div><button onClick={onClose} aria-label="Tutup detail"><X/></button></div><div className="stock-gauge"><div><span>Stok terhadap target</span><b>{health.percentage}%</b></div><div><i style={{ width: `${health.percentage}%` }}/></div></div><div className="detail-grid"><div><small>Stok tersedia</small><strong>{item.stock} {item.unit}</strong></div><div><small>Stok minimum</small><strong>{item.minimum} {item.unit}</strong></div><div><small>Saran pemesanan</small><strong>{health.restock ? `${health.restock} ${item.unit}` : "Belum diperlukan"}</strong></div><div><small>Harga estimasi</small><strong>{new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(item.price)}</strong></div><div><small>Kategori</small><strong>{item.category}</strong></div><div><small>Lokasi</small><strong>{item.warehouse}</strong></div><div className="full"><small>Supplier</small><strong>{item.supplier}</strong></div></div>{health.restock > 0 && <div className="restock-advice"><CircleAlert/><p>Segera buat permintaan pembelian minimal <b>{health.restock} {item.unit}</b> agar stok kembali ke target operasional.</p></div>}</article></div>;
+  const days = item.dailyUsage > 0 ? Math.floor(item.stock / item.dailyUsage) : 0;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><article className="modal item-detail-modal" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><span className={`status ${health.tone}`}>{health.label}</span><h2>{item.name}</h2><p>{item.sku} · {item.group}</p></div><button onClick={onClose} aria-label="Tutup detail"><X/></button></div><div className="stock-gauge"><div><span>Stok terhadap target</span><b>{health.percentage}%</b></div><div><i style={{ width: `${health.percentage}%` }}/></div></div><div className="detail-grid"><div><small>Stok tersedia</small><strong>{item.stock} {item.unit}</strong></div><div><small>Stok minimum</small><strong>{item.minimum} {item.unit}</strong></div><div><small>Estimasi bertahan</small><strong>±{days} hari</strong></div><div><small>Pemakaian rata-rata</small><strong>{item.dailyUsage} {item.unit} / hari</strong></div><div><small>Saran pemesanan</small><strong>{health.restock ? `${health.restock} ${item.unit}` : "Belum diperlukan"}</strong></div><div><small>Konversi pembelian</small><strong>1 {item.purchaseUnit} = {item.conversionFactor} {item.unit}</strong></div><div><small>Harga estimasi</small><strong>{formatMoney(item.price)}</strong></div><div><small>Kategori</small><strong>{item.category}</strong></div><div><small>Lokasi</small><strong>{item.warehouse}</strong></div><div className="full"><small>Supplier</small><strong>{item.supplier}</strong></div></div>{health.restock > 0 && <div className="restock-advice"><CircleAlert/><p>Segera buat permintaan pembelian minimal <b>{health.restock} {item.unit}</b> agar stok kembali ke target operasional.</p></div>}</article></div>;
 }
 
 function useStoredList<T>(key: string, initial: T[]) {
@@ -190,6 +232,8 @@ function useStoredList<T>(key: string, initial: T[]) {
 function SimpleModal({ title, subtitle, onClose, children }: { title: string; subtitle: string; onClose: () => void; children: React.ReactNode }) { return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><section className="modal" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><h2>{title}</h2><p>{subtitle}</p></div><button onClick={onClose} aria-label="Tutup"><X/></button></div>{children}</section></div>; }
 function TextField({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) { return <label>{label}<input type={type} required value={value} onChange={(event) => onChange(event.target.value)}/></label>; }
 function formatDate(value: string) { return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${value}T00:00:00`)); }
-function exportTransactions(records: StockTransaction[]) { const rows = [["ID", "Tanggal", "Barang", "Jenis", "Jumlah", "Satuan", "Supplier/Pengambil", "Keterangan"], ...records.map((record) => [record.id, record.date, record.item, record.type === "in" ? "Masuk" : "Keluar", record.qty, record.unit, record.party, record.note])]; downloadCsv("stockflow-transaksi.csv", rows); }
-export function exportInventory(items: Item[]) { const rows = [["SKU", "Barang", "Kelompok", "Kategori", "Supplier", "Lokasi", "Stok", "Minimum", "Satuan", "Harga", "Status", "Saran Restock"], ...items.map((item) => { const health = getStockHealth(item); return [item.sku, item.name, item.group, item.category, item.supplier, item.warehouse, item.stock, item.minimum, item.unit, item.price, health.label, health.restock]; })]; downloadCsv("stockflow-inventory-horeca.csv", rows); }
+function formatMoney(value: number) { return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value); }
+function getStockPriority(label: StockHealth) { return ({ Habis: 0, "Perlu restock": 1, "Mau habis": 2, Aman: 3 })[label]; }
+function exportTransactions(records: StockTransaction[]) { const rows = [["ID", "Tanggal", "Barang", "Jenis", "Jumlah", "Satuan", "Supplier/Pengambil", "Pengguna", "Keterangan"], ...records.map((record) => [record.id, record.date, record.item, record.type === "in" ? "Masuk" : "Keluar", record.qty, record.unit, record.party, record.user || "Dimas Riyanto", record.note])]; downloadCsv("stockflow-transaksi.csv", rows); }
+export function exportInventory(items: Item[]) { const rows = [["SKU", "Barang", "Kelompok", "Kategori", "Supplier", "Lokasi", "Stok", "Minimum", "Satuan", "Pemakaian/Hari", "Estimasi Hari", "Satuan Pembelian", "Konversi", "Harga", "Status", "Saran Restock"], ...items.map((item) => { const health = getStockHealth(item); return [item.sku, item.name, item.group, item.category, item.supplier, item.warehouse, item.stock, item.minimum, item.unit, item.dailyUsage, Math.floor(item.stock / item.dailyUsage), item.purchaseUnit, item.conversionFactor, item.price, health.label, health.restock]; })]; downloadCsv("stockflow-inventory-horeca.csv", rows); }
 function downloadCsv(filename: string, rows: Array<Array<string | number>>) { const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n"); const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url); }
