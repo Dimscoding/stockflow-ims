@@ -10,6 +10,9 @@ export type Item = {
   price: number;
   unit: string;
   supplier: string;
+  dailyUsage: number;
+  purchaseUnit: string;
+  conversionFactor: number;
 };
 
 type Row = [name: string, sku: string, stock: number, minimum: number, price: number, unit: string, supplier?: string];
@@ -18,7 +21,8 @@ const inventory: Omit<Item, "id">[] = [];
 
 function add(group: string, category: string, warehouse: string, supplier: string, rows: Row[]) {
   rows.forEach(([name, sku, stock, minimum, price, unit, customSupplier]) => {
-    inventory.push({ name, sku, group, category, warehouse, stock, minimum, price, unit, supplier: customSupplier ?? supplier });
+    const conversion = getConversion(unit);
+    inventory.push({ name, sku, group, category, warehouse, stock, minimum, price, unit, supplier: customSupplier ?? supplier, dailyUsage: 1, ...conversion });
   });
 }
 
@@ -180,7 +184,18 @@ add("Operasional", "Hygiene & Waste", "Hygiene Store", "Supplier Hygiene Lokal",
   ["Sikat Pipa / Grinder", "HYG-BRS-PIP", 5, 4, 38000, "Pcs"],
 ]);
 
-export const seedItems: Item[] = inventory.map((item, index) => ({ ...item, id: String(index + 1) }));
+export const seedItems: Item[] = inventory.map((item, index) => ({ ...item, id: String(index + 1), dailyUsage: (index % 6) + 1 }));
+
+function getConversion(unit: string) {
+  const conversions: Record<string, { purchaseUnit: string; conversionFactor: number }> = {
+    Kotak: { purchaseUnit: "Kardus", conversionFactor: 12 }, Botol: { purchaseUnit: "Karton", conversionFactor: 12 },
+    Pack: { purchaseUnit: "Karton", conversionFactor: 10 }, Kaleng: { purchaseUnit: "Karton", conversionFactor: 24 },
+    Pcs: { purchaseUnit: "Box", conversionFactor: 50 }, Kg: { purchaseUnit: "Sak", conversionFactor: 25 },
+    Liter: { purchaseUnit: "Jeriken", conversionFactor: 5 }, Porsi: { purchaseUnit: "Batch", conversionFactor: 20 },
+    Roll: { purchaseUnit: "Karton", conversionFactor: 6 }, Tray: { purchaseUnit: "Krat", conversionFactor: 10 },
+  };
+  return conversions[unit] ?? { purchaseUnit: unit, conversionFactor: 1 };
+}
 
 export const groupColors: Record<string, string> = {
   "Bahan Mentah": "#6d5dfc",
