@@ -5,7 +5,7 @@ import {
   ArrowDownToLine, ArrowUpFromLine, BarChart3, Boxes, Building2,
   ChevronDown, CircleAlert, ClipboardCheck, FileDown, LayoutDashboard,
   Menu, Mic, Moon, Package, Plus, Search, Settings, Sparkles, Sun,
-  Truck, Warehouse, X, CalendarClock,
+  Truck, Warehouse, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -13,23 +13,22 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { seedItems, type Item } from "@/data/inventory";
-import InventoryAdvanced from "@/components/inventory-advanced";
-import BatchExpiryView from "@/components/batch-expiry-view";
-import { TransactionsAdvanced, StocktakeAdvanced } from "@/components/transactions-stocktake-advanced";
-import SupplierPOView from "@/components/supplier-po-view";
-import WasteReportsView from "@/components/waste-reports-view";
 import {
-  exportInventory, getStockHealth, ItemDetailModal, SettingsView,
-  StockNeedsPanel, UsersView,
+  getStockHealth, InventoryCatalogView, ItemDetailModal, SettingsView,
+  StockNeedsPanel, StocktakeView, SuppliersView, TransactionsView, UsersView,
   seedStockTransactions, type StockTransaction,
 } from "@/components/management-views";
+import {
+  AuditLogView, BatchFefoView, PurchaseOrdersView, WasteView,
+  seedAudit, type AuditEntry,
+} from "@/components/advanced-views";
 
 const WarehouseCanvas = dynamic(() => import("@/components/warehouse-canvas"), {
   ssr: false,
   loading: () => <div className="canvas-loading">Menyiapkan denah gudang…</div>,
 });
 
-type NavKey = "dashboard" | "inventory" | "transactions" | "stocktake" | "batches" | "warehouse" | "reports" | "suppliers" | "users" | "settings";
+type NavKey = "dashboard" | "inventory" | "transactions" | "stocktake" | "batches" | "purchases" | "waste" | "warehouse" | "reports" | "suppliers" | "users" | "audit" | "settings";
 
 const movementData = [
   { day: "Sen", incoming: 38, outgoing: 22 }, { day: "Sel", incoming: 24, outgoing: 31 },
@@ -50,13 +49,17 @@ const navItems = [
   { key: "inventory" as const, label: "Inventory", icon: Boxes },
   { key: "transactions" as const, label: "Transaksi", icon: ArrowDownToLine },
   { key: "stocktake" as const, label: "Stok opname", icon: ClipboardCheck },
-  { key: "batches" as const, label: "Batch & expiry", icon: CalendarClock },
+  { key: "batches" as const, label: "Batch & FEFO", icon: Package },
+  { key: "purchases" as const, label: "Purchase order", icon: Truck },
+  { key: "waste" as const, label: "Waste", icon: CircleAlert },
   { key: "warehouse" as const, label: "Denah gudang", icon: Warehouse },
-  { key: "reports" as const, label: "Waste & laporan", icon: BarChart3 },
-  { key: "suppliers" as const, label: "Supplier & PO", icon: Truck },
+  { key: "reports" as const, label: "Laporan", icon: BarChart3 },
+  { key: "suppliers" as const, label: "Supplier", icon: Truck },
   { key: "users" as const, label: "Pengguna", icon: Building2 },
+  { key: "audit" as const, label: "Audit log", icon: ClipboardCheck },
   { key: "settings" as const, label: "Pengaturan", icon: Settings },
 ];
+const managementKeys: NavKey[] = ["suppliers", "users", "audit", "settings"];
 
 const money = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 
@@ -73,12 +76,20 @@ export default function Home() {
   const [greeting, setGreeting] = useState("Selamat datang");
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>(seedStockTransactions);
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>(seedAudit);
 
   useEffect(() => {
     const now = new Date();
-    const formatter = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Makassar", weekday: "long", day: "numeric", month: "long", year: "numeric" });
-    const hour = Number(new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Makassar", hour: "2-digit", hourCycle: "h23" }).format(now));
-    const frame = requestAnimationFrame(() => { setTodayLabel(formatter.format(now)); setGreeting(hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam"); });
+    const formatter = new Intl.DateTimeFormat("id-ID", {
+      timeZone: "Asia/Makassar", weekday: "long", day: "numeric", month: "long", year: "numeric",
+    });
+    const hour = Number(new Intl.DateTimeFormat("id-ID", {
+      timeZone: "Asia/Makassar", hour: "2-digit", hourCycle: "h23",
+    }).format(now));
+    const frame = requestAnimationFrame(() => {
+      setTodayLabel(formatter.format(now));
+      setGreeting(hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam");
+    });
     return () => cancelAnimationFrame(frame);
   }, []);
 
@@ -88,6 +99,7 @@ export default function Home() {
     const frame = requestAnimationFrame(() => setItems(JSON.parse(stored) as Item[]));
     return () => cancelAnimationFrame(frame);
   }, []);
+
   useEffect(() => { localStorage.setItem("stockflow-horeca-items-v1", JSON.stringify(items)); }, [items]);
 
   useEffect(() => {
@@ -97,6 +109,13 @@ export default function Home() {
     return () => cancelAnimationFrame(frame);
   }, []);
   useEffect(() => { localStorage.setItem("stockflow-transactions-v1", JSON.stringify(stockTransactions)); }, [stockTransactions]);
+  useEffect(() => {
+    const stored = localStorage.getItem("stockflow-audit-v1");
+    if (!stored) return;
+    const frame = requestAnimationFrame(() => setAuditLogs(JSON.parse(stored) as AuditEntry[]));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  useEffect(() => { localStorage.setItem("stockflow-audit-v1", JSON.stringify(auditLogs)); }, [auditLogs]);
 
   const totals = useMemo(() => {
     const units = items.reduce((sum, item) => sum + item.stock, 0);
@@ -106,13 +125,29 @@ export default function Home() {
   const filteredItems = items.filter((item) => `${item.name} ${item.sku} ${item.group} ${item.category} ${item.supplier}`.toLowerCase().includes(query.toLowerCase()));
 
   function activate(key: NavKey) { setActive(key); setMenuOpen(false); }
+  function addAudit(action: string, detail: string, module: string) {
+    setAuditLogs((current) => [{ id: `AUD-${Date.now()}`, time: new Date().toISOString(), user: "Dimas Riyanto", action, detail, module }, ...current]);
+  }
   function recordStockTransaction(record: StockTransaction) {
     const item = items.find((entry) => entry.id === record.itemId);
     if (!item) return "Barang tidak ditemukan.";
     if (record.type === "out" && record.qty > item.stock) return `Stok tidak cukup. Tersedia ${item.stock} ${item.unit}.`;
     setItems((current) => current.map((entry) => entry.id === record.itemId ? { ...entry, stock: entry.stock + (record.type === "in" ? record.qty : -record.qty) } : entry));
     setStockTransactions((current) => [record, ...current]);
+    addAudit(record.type === "in" ? "Barang masuk" : "Barang keluar", `${record.item} ${record.type === "in" ? "+" : "−"}${record.qty} ${record.unit}`, "Transaksi");
     return null;
+  }
+  function recordWaste(itemId: string, qty: number) {
+    const item = items.find((entry) => entry.id === itemId);
+    if (!item) return "Barang tidak ditemukan.";
+    if (qty > item.stock) return `Jumlah melebihi stok tersedia (${item.stock} ${item.unit}).`;
+    setItems((current) => current.map((entry) => entry.id === itemId ? { ...entry, stock: entry.stock - qty } : entry));
+    return null;
+  }
+  function deleteStockTransaction(record: StockTransaction) {
+    setItems((current) => current.map((item) => item.id === record.itemId ? { ...item, stock: Math.max(0, item.stock + (record.type === "in" ? -record.qty : record.qty)) } : item));
+    setStockTransactions((current) => current.filter((item) => item.id !== record.id));
+    addAudit("Transaksi dihapus", `${record.id} · ${record.item}`, "Transaksi");
   }
   function startVoice() {
     type VoiceResult = { results: ArrayLike<{ 0: { transcript: string } }> };
@@ -120,105 +155,78 @@ export default function Home() {
     type VoiceWindow = typeof window & { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
     const voiceWindow = window as VoiceWindow;
     const SpeechRecognition = voiceWindow.SpeechRecognition || voiceWindow.webkitSpeechRecognition;
-    if (!SpeechRecognition) { setVoiceText("Browser ini belum mendukung input suara. Modul Whisper siap dihubungkan melalui endpoint server."); return; }
-    const recognition = new SpeechRecognition(); recognition.lang = "id-ID"; recognition.onresult = (event) => setVoiceText(event.results[0][0].transcript); recognition.onend = () => setListening(false); setListening(true); recognition.start();
+    if (!SpeechRecognition) {
+      setVoiceText("Browser ini belum mendukung input suara. Modul Whisper siap dihubungkan melalui endpoint server.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "id-ID";
+    recognition.onresult = (event) => setVoiceText(event.results[0][0].transcript);
+    recognition.onend = () => setListening(false);
+    setListening(true); recognition.start();
   }
 
-  return <div className={dark ? "app dark" : "app"}>
-    <aside className={menuOpen ? "sidebar open" : "sidebar"}>
-      <div className="brand"><span className="brand-mark"><Boxes size={20} /></span><div><strong>StockFlow</strong><small>Inventory OS</small></div></div>
-      <button className="close-menu" onClick={() => setMenuOpen(false)} aria-label="Tutup menu"><X /></button>
-      <div className="nav-label">Workspace</div>
-      <nav>{navItems.slice(0, 7).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "nav-item active" : "nav-item"} onClick={() => activate(key)}><Icon size={18} /><span>{label}</span>{key === "inventory" && <b>{items.length}</b>}</button>)}</nav>
-      <div className="nav-label tools-label">Manajemen</div>
-      <nav>{navItems.slice(7).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "nav-item active" : "nav-item"} onClick={() => activate(key)}><Icon size={18}/><span>{label}</span></button>)}</nav>
-      <div className="ai-card"><span><Sparkles size={17} /> StockFlow AI</span><p>Cek stok dan buat transaksi dengan perintah suara.</p><button onClick={startVoice}><Mic size={15} /> Coba voice command</button></div>
-      <div className="profile-side"><div className="avatar">DR</div><div><strong>Dimas Riyanto</strong><small>Administrator</small></div><ChevronDown size={16} /></div>
-    </aside>
-    {menuOpen && <button className="overlay" onClick={() => setMenuOpen(false)} aria-label="Tutup menu" />}
-    <main className="main-shell">
-      <header className="topbar"><button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Buka menu"><Menu /></button><div><p className="eyebrow">{todayLabel}</p><h1>{navItems.find((item) => item.key === active)?.label}</h1></div><div className="top-actions"><label className="search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari barang atau SKU…" /></label><button className="icon-button" onClick={() => setDark(!dark)} aria-label="Ganti tema">{dark ? <Sun size={18} /> : <Moon size={18} />}</button><button className="primary" onClick={() => setShowAdd(true)}><Plus size={18} /> Tambah barang</button></div></header>
-      {active === "dashboard" && <Dashboard totals={totals} items={items} greeting={greeting} voiceText={voiceText} listening={listening} startVoice={startVoice} onSelect={setSelectedItem} onNavigate={activate} />}
-      {active === "inventory" && <InventoryAdvanced items={filteredItems} query={query} setQuery={setQuery} onAdd={() => setShowAdd(true)} onSelect={setSelectedItem} />}
-      {active === "transactions" && <TransactionsAdvanced items={items} records={stockTransactions} onRecord={recordStockTransaction} onUpdateRecords={setStockTransactions}/>} 
-      {active === "stocktake" && <StocktakeAdvanced items={items} onApply={(counts) => setItems((current) => current.map((item) => ({ ...item, stock: Number(counts[item.id] ?? item.stock) })))}/>} 
-      {active === "batches" && <BatchExpiryView items={items}/>} 
-      {active === "warehouse" && <WarehouseView />}{active === "reports" && <WasteReportsView items={items} />}
-      {active === "suppliers" && <SupplierPOView items={items}/>} {active === "users" && <UsersView/>}{active === "settings" && <SettingsView/>}
-    </main>
-    <nav className="mobile-nav">{navItems.slice(0, 4).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "active" : ""} onClick={() => activate(key)}><Icon size={19} /><span>{label.split(" ")[0]}</span></button>)}</nav>
-    {showAdd && <AddItemModal onClose={() => setShowAdd(false)} onSave={(item) => { setItems((current) => [item, ...current]); setShowAdd(false); setActive("inventory"); }} />}
-    {selectedItem && <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)}/>}
-  </div>;
+  return (
+    <div className={dark ? "app dark" : "app"}>
+      <aside className={menuOpen ? "sidebar open" : "sidebar"}>
+        <div className="brand"><span className="brand-mark"><Boxes size={20} /></span><div><strong>StockFlow</strong><small>Inventory OS</small></div></div>
+        <button className="close-menu" onClick={() => setMenuOpen(false)} aria-label="Tutup menu"><X /></button>
+        <div className="nav-label">Workspace</div>
+        <nav>{navItems.filter((item) => !managementKeys.includes(item.key)).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "nav-item active" : "nav-item"} onClick={() => activate(key)}><Icon size={18} /><span>{label}</span>{key === "inventory" && <b>{items.length}</b>}</button>)}</nav>
+        <div className="nav-label tools-label">Manajemen</div>
+        <nav>{navItems.filter((item) => managementKeys.includes(item.key)).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "nav-item active" : "nav-item"} onClick={() => activate(key)}><Icon size={18}/><span>{label}</span></button>)}</nav>
+        <div className="ai-card"><span><Sparkles size={17} /> StockFlow AI</span><p>Cek stok dan buat transaksi dengan perintah suara.</p><button onClick={startVoice}><Mic size={15} /> Coba voice command</button></div>
+        <div className="profile-side"><div className="avatar">DR</div><div><strong>Dimas Riyanto</strong><small>Administrator</small></div><ChevronDown size={16} /></div>
+      </aside>
+      {menuOpen && <button className="overlay" onClick={() => setMenuOpen(false)} aria-label="Tutup menu" />}
+      <main className="main-shell">
+        <header className="topbar"><button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Buka menu"><Menu /></button><div><p className="eyebrow">{todayLabel}</p><h1>{navItems.find((item) => item.key === active)?.label}</h1></div><div className="top-actions"><label className="search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari barang atau SKU…" /></label><button className="icon-button" onClick={() => setDark(!dark)} aria-label="Ganti tema">{dark ? <Sun size={18} /> : <Moon size={18} />}</button><button className="primary" onClick={() => setShowAdd(true)}><Plus size={18} /> Tambah barang</button></div></header>
+        {active === "dashboard" && <Dashboard totals={totals} items={items} greeting={greeting} voiceText={voiceText} listening={listening} startVoice={startVoice} onSelect={setSelectedItem} onNavigate={activate} />}
+        {active === "inventory" && <InventoryCatalogView items={filteredItems} query={query} setQuery={setQuery} onAdd={() => setShowAdd(true)} onSelect={setSelectedItem} />}
+        {active === "transactions" && <TransactionsView items={items} records={stockTransactions} onRecord={recordStockTransaction} onDelete={deleteStockTransaction}/>}
+        {active === "stocktake" && <StocktakeView items={items} onApply={(counts) => { setItems((current) => current.map((item) => ({ ...item, stock: Number(counts[item.id] ?? item.stock) }))); addAudit("Stock opname disimpan", `${Object.keys(counts).length} item diperiksa`, "Stock Opname"); }}/>}
+        {active === "batches" && <BatchFefoView items={items} onAudit={addAudit}/>}
+        {active === "purchases" && <PurchaseOrdersView items={items} onAudit={addAudit}/>}
+        {active === "waste" && <WasteView items={items} onWaste={recordWaste} onAudit={addAudit}/>}
+        {active === "warehouse" && <WarehouseView />}{active === "reports" && <Reports items={items} />}
+        {active === "suppliers" && <SuppliersView/>}{active === "users" && <UsersView/>}{active === "audit" && <AuditLogView logs={auditLogs}/>} {active === "settings" && <SettingsView/>}
+      </main>
+      <nav className="mobile-nav">{navItems.slice(0, 4).map(({ key, label, icon: Icon }) => <button key={key} className={active === key ? "active" : ""} onClick={() => activate(key)}><Icon size={19} /><span>{label.split(" ")[0]}</span></button>)}</nav>
+      {showAdd && <AddItemModal onClose={() => setShowAdd(false)} onSave={(item) => { setItems((current) => [item, ...current]); addAudit("Barang ditambahkan", `${item.name} · ${item.sku}`, "Inventory"); setShowAdd(false); setActive("inventory"); }} />}
+      {selectedItem && <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)}/>}
+    </div>
+  );
 }
 
 function Dashboard({ totals, items, greeting, voiceText, listening, startVoice, onSelect, onNavigate }: { totals: { units: number; value: number; low: number; empty: number }; items: Item[]; greeting: string; voiceText: string; listening: boolean; startVoice: () => void; onSelect: (item: Item) => void; onNavigate: (key: NavKey) => void }) {
-  const attention = items
-    .filter((item) => getStockHealth(item).label !== "Aman")
-    .sort((a,b) => a.stock - b.stock)
-    .slice(0,5);
-  return <div className="page-content dashboard-reference">
-    <section className="dashboard-welcome">
-      <div><h2>{greeting}, Dimas</h2><p>Berikut kondisi persediaan operasional F&amp;B hari ini.</p></div>
-    </section>
-
-    <section className="stats-grid dashboard-kpis">
-      <StatCard title="Total jenis barang" value={items.length.toString()} note={`${new Set(items.map((item) => item.group)).size} kelompok kategori`} icon={<Package />} tone="purple" />
-      <StatCard title="Total unit tersedia" value={totals.units.toLocaleString("id-ID")} note="Seluruh lokasi" icon={<Boxes />} tone="blue" />
-      <StatCard title="Nilai persediaan" value={money.format(totals.value)} note="Berdasarkan harga estimasi" icon={<BarChart3 />} tone="green" />
-      <StatCard title="Perlu perhatian" value={(totals.low + totals.empty).toString()} note={`${totals.low} perlu restock · ${totals.empty} habis`} icon={<CircleAlert />} tone="orange" />
-    </section>
-
-    <section className="dashboard-reference-grid">
-      <article className="panel movement-panel reference-movement">
-        <PanelTitle title="Pergerakan stok" subtitle="Barang masuk dan keluar selama 7 hari terakhir" />
-        <div className="chart-wrap reference-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={movementData}>
-          <defs><linearGradient id="incoming" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#5f5af6" stopOpacity={.24}/><stop offset="95%" stopColor="#5f5af6" stopOpacity={0}/></linearGradient></defs>
-          <CartesianGrid strokeDasharray="4 5" vertical={false} stroke="var(--line)"/>
-          <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:11}}/>
-          <YAxis axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:11}}/>
-          <Tooltip contentStyle={{borderRadius:14,border:"1px solid var(--line)",background:"var(--panel)",color:"var(--text)",boxShadow:"0 14px 30px rgba(22,31,45,.12)"}}/>
-          <Area type="monotone" dataKey="incoming" name="Masuk" stroke="#5f5af6" strokeWidth={3} fill="url(#incoming)"/>
-          <Area type="monotone" dataKey="outgoing" name="Keluar" stroke="#ff9f1c" strokeWidth={2.5} fill="transparent"/>
-        </AreaChart></ResponsiveContainer></div>
-        <div className="legend reference-legend"><span><i className="purple-dot"/>Barang masuk</span><span><i className="orange-dot"/>Barang keluar</span></div>
-      </article>
-
-      <article className="panel attention-panel reference-attention">
-        <PanelTitle title="Stok perlu perhatian" subtitle="Di bawah batas minimum" action="Kelola stok →" onAction={() => onNavigate("inventory")} />
-        <div className="reference-attention-list">{attention.map((item) => {
-          const health=getStockHealth(item);
-          return <button key={item.id} className="reference-stock-row" onClick={()=>onSelect(item)}>
-            <span className="reference-product-icon"><Package size={18}/></span>
-            <span className="reference-product-copy"><strong>{item.name}</strong><small>{item.sku}</small><em>{item.category}</em></span>
-            <span className="reference-product-stock"><b>Stok: {item.stock} {item.unit}</b><small>Min: {item.minimum} {item.unit}</small></span>
-            <span className={`status ${health.tone}`}>{health.label}</span>
-          </button>
-        })}</div>
-        <button className="reference-see-all" onClick={()=>onNavigate("inventory")}>Lihat semua barang perlu perhatian →</button>
-      </article>
-
-      <article className="panel transaction-panel reference-activity">
-        <PanelTitle title="Aktivitas terbaru" subtitle="Transaksi terbaru dari seluruh gudang" action="Lihat semua →" onAction={() => onNavigate("transactions")} />
-        <div className="activity-table-wrap"><table className="activity-table"><thead><tr><th>Aktivitas</th><th>Barang</th><th>Jenis / ID</th><th>Jumlah</th><th>Waktu</th></tr></thead><tbody>{transactions.slice(0,5).map((trx) => <ActivityTableRow key={trx.id} trx={trx}/>)}</tbody></table></div>
-      </article>
-    </section>
-
-    <section className="assistant-strip reference-assistant">
-      <div className="assistant-icon"><Sparkles /></div>
-      <div><strong>Asisten inventory</strong><p>{voiceText || "Tekan mikrofon lalu ucapkan, “Tambahkan stok fresh milk sebanyak 20 kotak.”"}</p></div>
-      <button className={listening ? "voice-button listening" : "voice-button"} onClick={startVoice}><Mic size={18}/>{listening ? "Mendengarkan…" : "Mulai bicara"}</button>
-    </section>
-  </div>;
+  return <div className="page-content"><section className="welcome-row"><div><h2>{greeting}, Dimas</h2><p>Berikut kondisi persediaan operasional F&amp;B hari ini.</p></div><div className="live-pill"><span /> Data demo HORECA aktif</div></section>
+    <section className="stats-grid"><StatCard title="Total jenis barang" value={items.length.toString()} note={`${new Set(items.map((item) => item.group)).size} kelompok aktif`} icon={<Package />} tone="purple" /><StatCard title="Total unit tersedia" value={totals.units.toLocaleString("id-ID")} note="Seluruh lokasi penyimpanan" icon={<Boxes />} tone="blue" /><StatCard title="Nilai persediaan" value={money.format(totals.value)} note="Berdasarkan harga estimasi" icon={<BarChart3 />} tone="green" /><StatCard title="Perlu perhatian" value={(totals.low + totals.empty).toString()} note={`${totals.empty} barang habis`} icon={<CircleAlert />} tone="orange" /></section>
+    <section className="dashboard-grid"><article className="panel movement-panel"><PanelTitle title="Pergerakan stok" subtitle="Barang masuk dan keluar selama 7 hari" /><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={movementData}><defs><linearGradient id="incoming" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6d5dfc" stopOpacity={.28}/><stop offset="95%" stopColor="#6d5dfc" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)"/><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:12}}/><YAxis axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:12}}/><Tooltip contentStyle={{borderRadius:14,border:"1px solid var(--line)",background:"var(--panel)",color:"var(--text)"}}/><Area type="monotone" dataKey="incoming" stroke="#6d5dfc" strokeWidth={3} fill="url(#incoming)"/><Area type="monotone" dataKey="outgoing" stroke="#ffb547" strokeWidth={2.5} fill="transparent"/></AreaChart></ResponsiveContainer></div><div className="legend"><span><i className="purple-dot"/>Barang masuk</span><span><i className="orange-dot"/>Barang keluar</span></div></article>
+      <article className="panel category-panel"><PanelTitle title="Kebutuhan stok per item" subtitle="Prioritas berdasarkan stok minimum" /><StockNeedsPanel items={items} onSelect={onSelect}/></article>
+      <article className="panel transaction-panel"><PanelTitle title="Aktivitas terbaru" subtitle="Transaksi terbaru dari seluruh gudang" action="Lihat semua" onAction={() => onNavigate("transactions")} />{transactions.slice(0,3).map((trx) => <TransactionRow key={trx.id} trx={trx}/>)}</article>
+      <article className="panel attention-panel"><PanelTitle title="Stok perlu perhatian" subtitle="Di bawah batas minimum" action="Kelola stok" onAction={() => onNavigate("inventory")} />{items.filter((item) => item.stock <= item.minimum).slice(0,3).map((item) => <div className="stock-alert" key={item.id}><div className="product-icon"><Package size={18}/></div><div><strong>{item.name}</strong><small>{item.sku} · {item.warehouse}</small></div><div className={item.stock === 0 ? "stock-badge empty" : "stock-badge low"}>{item.stock === 0 ? "Habis" : `${item.stock} ${item.unit}`}</div></div>)}</article></section>
+    <section className="assistant-strip"><div className="assistant-icon"><Sparkles /></div><div><strong>Asisten inventory</strong><p>{voiceText || "Tekan mikrofon lalu ucapkan, “Tambahkan stok fresh milk sebanyak 20 kotak.”"}</p></div><button className={listening ? "voice-button listening" : "voice-button"} onClick={startVoice}><Mic size={18}/>{listening ? "Mendengarkan…" : "Mulai bicara"}</button></section></div>;
 }
+
 function WarehouseView() { return <div className="page-content"><section className="page-heading"><div><h2>Denah gudang interaktif</h2><p>Petakan dry storage, chiller, freezer, beverage bar, dan area kemasan.</p></div><div className="live-pill"><span/> Tersimpan otomatis</div></section><article className="panel warehouse-card"><div className="warehouse-info"><div><strong>Central Kitchen &amp; Storage — Monjok</strong><span>8 zona · 24 rak · inventaris F&amp;B</span></div><div className="capacity"><span>Kapasitas 72%</span><div><i/></div></div></div><div className="canvas-shell"><WarehouseCanvas/></div></article></div> }
+function Reports({items}:{items:Item[]}) {
+  const data=useMemo(()=>items.map((item)=>({name:item.sku,value:getStockHealth(item).restock})).filter((item)=>item.value>0).sort((a,b)=>b.value-a.value).slice(0,12),[items]);
+  const fastMoving = useMemo(() => items.toSorted((a, b) => b.dailyUsage - a.dailyUsage).slice(0, 5), [items]);
+  const slowMoving = useMemo(() => items.toSorted((a, b) => a.dailyUsage - b.dailyUsage || b.stock - a.stock).slice(0, 5), [items]);
+  const inventoryValue = items.reduce((sum, item) => sum + item.stock * item.price, 0);
+  return <div className="page-content"><section className="page-heading"><div><h2>Laporan persediaan</h2><p>Analisis kebutuhan restock, nilai aset, dan kecepatan pemakaian item.</p></div><button className="primary" onClick={()=>window.print()}><FileDown size={17}/> Cetak PDF</button></section>
+    <section className="report-kpis"><div><span>Nilai persediaan</span><strong>{money.format(inventoryValue)}</strong><small>Nominal lengkap berdasarkan harga estimasi</small></div><div><span>Fast moving</span><strong>{fastMoving[0]?.name}</strong><small>{fastMoving[0]?.dailyUsage} {fastMoving[0]?.unit} per hari</small></div><div><span>Item perlu perhatian</span><strong>{items.filter((item)=>getStockHealth(item).label!=="Aman").length}</strong><small>Prioritaskan PO dan pemantauan harian</small></div></section>
+    <section className="report-grid"><article className="panel report-chart"><PanelTitle title="Prioritas restock per item" subtitle="Rekomendasi jumlah pemesanan berdasarkan SKU"/><div className="bar-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)"/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:10}}/><YAxis axisLine={false} tickLine={false} tick={{fill:"var(--muted)",fontSize:12}}/><Tooltip/><Bar dataKey="value" name="Saran restock" fill="#6d5dfc" radius={[8,8,0,0]}/></BarChart></ResponsiveContainer></div></article><article className="panel report-summary"><PanelTitle title="Ringkasan September" subtitle="Kinerja inventaris"/><div className="report-metric"><span>Akurasi stok</span><strong>97,8%</strong><i style={{width:"97.8%"}}/></div><div className="report-metric"><span>Item perlu perhatian</span><strong>{items.filter((item)=>getStockHealth(item).label!=="Aman").length}</strong><i style={{width:`${Math.min(100,(items.filter((item)=>getStockHealth(item).label!=="Aman").length/items.length)*100)}%`}}/></div><div className="report-metric"><span>Pemenuhan permintaan</span><strong>94,2%</strong><i style={{width:"94.2%"}}/></div><div className="report-note"><ClipboardCheck/><div><strong>Stok HORECA terpantau</strong><p>Harga merupakan estimasi demo dan dapat diperbarui sesuai quotation supplier.</p></div></div></article></section>
+    <section className="movement-lists"><article className="panel"><PanelTitle title="Barang paling cepat habis" subtitle="Berdasarkan pemakaian rata-rata harian"/>{fastMoving.map((item)=><div className="movement-item" key={item.id}><span>{item.name}<small>{item.sku}</small></span><b>{item.dailyUsage} {item.unit}/hari</b></div>)}</article><article className="panel"><PanelTitle title="Barang jarang digunakan" subtitle="Perlu evaluasi pembelian dan kapasitas"/>{slowMoving.map((item)=><div className="movement-item" key={item.id}><span>{item.name}<small>{item.sku}</small></span><b>{item.dailyUsage} {item.unit}/hari</b></div>)}</article></section>
+  </div>
+}
+
 function StatCard({title,value,note,icon,tone}:{title:string;value:string;note:string;icon:React.ReactNode;tone:string}) { return <article className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div className="stat-copy"><span>{title}</span><strong>{value}</strong><small>{note}</small></div><div className={`spark ${tone}`}><i/><i/><i/><i/><i/></div></article> }
 function PanelTitle({title,subtitle,action,onAction}:{title:string;subtitle:string;action?:string;onAction?:()=>void}) { return <div className="panel-title"><div><h3>{title}</h3><p>{subtitle}</p></div>{action&&<button onClick={onAction}>{action}</button>}</div> }
-function ActivityTableRow({trx}:{trx:(typeof transactions)[number]}) { return <tr><td><span className={`trx-icon ${trx.tone}`}>{trx.tone==="in"?<ArrowDownToLine/>:trx.tone==="out"?<ArrowUpFromLine/>:trx.tone==="transfer"?<Truck/>:<CircleAlert/>}</span></td><td><strong>{trx.item}</strong></td><td><span>{trx.type}</span><small>{trx.id}</small></td><td><b>{trx.qty}</b></td><td>{trx.time}</td></tr> }
 function TransactionRow({trx}:{trx:(typeof transactions)[number]}) { return <div className="transaction-row"><span className={`trx-icon ${trx.tone}`}>{trx.tone==="in"?<ArrowDownToLine/>:trx.tone==="out"?<ArrowUpFromLine/>:trx.tone==="transfer"?<Truck/>:<CircleAlert/>}</span><div><strong>{trx.item}</strong><small>{trx.type} · {trx.id}</small></div><div><b>{trx.qty}</b><small>{trx.time}</small></div></div> }
 function AddItemModal({onClose,onSave}:{onClose:()=>void;onSave:(item:Item)=>void}) {
-  const [form,setForm]=useState({name:"",sku:"",group:"Bahan Mentah",category:"Dairy, Egg & Fats",supplier:"",warehouse:"Dry Storage",stock:"",minimum:"",price:"",unit:"Pcs"});
-  function submit(event:React.FormEvent){event.preventDefault();onSave({id:crypto.randomUUID(),name:form.name,sku:form.sku,group:form.group,category:form.category,supplier:form.supplier,warehouse:form.warehouse,stock:Number(form.stock),minimum:Number(form.minimum),price:Number(form.price),unit:form.unit});}
+  const [form,setForm]=useState({name:"",sku:"",group:"Bahan Mentah",category:"Dairy, Egg & Fats",supplier:"",warehouse:"Dry Storage",stock:"",minimum:"",price:"",unit:"Pcs",dailyUsage:"1",purchaseUnit:"Karton",conversionFactor:"1"});
+  function submit(event:React.FormEvent){event.preventDefault();onSave({id:crypto.randomUUID(),name:form.name,sku:form.sku,group:form.group,category:form.category,supplier:form.supplier,warehouse:form.warehouse,stock:Number(form.stock),minimum:Number(form.minimum),price:Number(form.price),unit:form.unit,dailyUsage:Number(form.dailyUsage),purchaseUnit:form.purchaseUnit,conversionFactor:Number(form.conversionFactor)});}
   const update=(key:string,value:string)=>setForm(current=>({...current,[key]:value}));
-  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><form className="modal" onSubmit={submit} onMouseDown={(event)=>event.stopPropagation()}><div className="modal-head"><div><h2>Tambah barang</h2><p>Masukkan data master dan stok awal.</p></div><button type="button" onClick={onClose}><X/></button></div><div className="form-grid"><label className="full">Nama barang<input required value={form.name} onChange={(e)=>update("name",e.target.value)} placeholder="Contoh: Fresh Milk Pasteurisasi 1 L"/></label><label>SKU<input required value={form.sku} onChange={(e)=>update("sku",e.target.value)} placeholder="DRY-MLK-PST-1L"/></label><label>Kelompok<select value={form.group} onChange={(e)=>update("group",e.target.value)}><option>Bahan Mentah</option><option>Semi-Finished</option><option>Sirup &amp; Topping</option><option>Kemasan</option><option>Operasional</option></select></label><label>Kategori<input required value={form.category} onChange={(e)=>update("category",e.target.value)}/></label><label>Supplier<input required value={form.supplier} onChange={(e)=>update("supplier",e.target.value)} placeholder="Nama vendor"/></label><label>Lokasi<select value={form.warehouse} onChange={(e)=>update("warehouse",e.target.value)}><option>Dry Storage</option><option>Chiller</option><option>Freezer</option><option>Beverage Bar</option><option>Packaging Store</option><option>Hygiene Store</option><option>Chemical Store</option></select></label><label>Satuan<input value={form.unit} onChange={(e)=>update("unit",e.target.value)}/></label><label>Stok awal<input required type="number" min="0" value={form.stock} onChange={(e)=>update("stock",e.target.value)}/></label><label>Stok minimum<input required type="number" min="0" value={form.minimum} onChange={(e)=>update("minimum",e.target.value)}/></label><label className="full">Harga estimasi<input required type="number" min="0" value={form.price} onChange={(e)=>update("price",e.target.value)} placeholder="0"/></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Batal</button><button className="primary" type="submit">Simpan barang</button></div></form></div>
+  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><form className="modal" onSubmit={submit} onMouseDown={(event)=>event.stopPropagation()}><div className="modal-head"><div><h2>Tambah barang</h2><p>Masukkan data master, konversi satuan, dan stok awal.</p></div><button type="button" onClick={onClose}><X/></button></div><div className="form-grid"><label className="full">Nama barang<input required value={form.name} onChange={(e)=>update("name",e.target.value)} placeholder="Contoh: Fresh Milk Pasteurisasi 1 L"/></label><label>SKU<input required value={form.sku} onChange={(e)=>update("sku",e.target.value)} placeholder="DRY-MLK-PST-1L"/></label><label>Kelompok<select value={form.group} onChange={(e)=>update("group",e.target.value)}><option>Bahan Mentah</option><option>Semi-Finished</option><option>Sirup &amp; Topping</option><option>Kemasan</option><option>Operasional</option></select></label><label>Kategori<input required value={form.category} onChange={(e)=>update("category",e.target.value)}/></label><label>Supplier<input required value={form.supplier} onChange={(e)=>update("supplier",e.target.value)} placeholder="Nama vendor"/></label><label>Lokasi<select value={form.warehouse} onChange={(e)=>update("warehouse",e.target.value)}><option>Dry Storage</option><option>Chiller</option><option>Freezer</option><option>Beverage Bar</option><option>Packaging Store</option><option>Hygiene Store</option><option>Chemical Store</option></select></label><label>Satuan stok<input value={form.unit} onChange={(e)=>update("unit",e.target.value)}/></label><label>Pemakaian rata-rata / hari<input required type="number" min="0.1" step="0.1" value={form.dailyUsage} onChange={(e)=>update("dailyUsage",e.target.value)}/></label><label>Satuan pembelian<input required value={form.purchaseUnit} onChange={(e)=>update("purchaseUnit",e.target.value)} placeholder="Karton / Sak / Box"/></label><label>Isi per satuan pembelian<input required type="number" min="1" value={form.conversionFactor} onChange={(e)=>update("conversionFactor",e.target.value)}/></label><label>Stok awal<input required type="number" min="0" value={form.stock} onChange={(e)=>update("stock",e.target.value)}/></label><label>Stok minimum<input required type="number" min="0" value={form.minimum} onChange={(e)=>update("minimum",e.target.value)}/></label><label className="full">Harga estimasi per {form.unit}<input required type="number" min="0" value={form.price} onChange={(e)=>update("price",e.target.value)} placeholder="0"/></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Batal</button><button className="primary" type="submit">Simpan barang</button></div></form></div>
 }
